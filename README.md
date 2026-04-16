@@ -29,13 +29,53 @@ make run
 
 # Or run directly with Go
 go run ./cmd/gokux
+
+# With config file
+go run ./cmd/gokux -f config.yaml
+
+# Cascading config files (later overrides earlier)
+go run ./cmd/gokux -f config.yaml -f config-dev.yaml
 ```
 
 The server starts on port `8080` by default.
 
 ## Configuration
 
-All configuration is via environment variables with the `GOKUX_` prefix:
+Configuration is layered with the following precedence (highest wins):
+
+1. **Environment variables** (`GOKUX_*` prefix)
+2. **Last `-f` config file**
+3. **Earlier `-f` config files**
+4. **Built-in defaults**
+
+### Config files (`-f` flag)
+
+Use `-f` to load YAML config files. The flag can be repeated — later files override earlier ones, similar to `helm install -f values.yaml -f values-dev.yaml`:
+
+```bash
+# Single file
+gokux -f config.yaml
+
+# Cascading (dev overrides base)
+gokux -f config_base.yaml -f config_dev.yaml
+
+# No files — pure env vars (defaults still apply)
+GOKUX_SERVER_PORT=9090 gokux
+```
+
+Example `config.yaml`:
+
+```yaml
+server:
+  port: 8080
+
+log:
+  level: info
+```
+
+### Environment variables
+
+All configuration can also be set via environment variables with the `GOKUX_` prefix:
 
 | Variable             | Default  | Description           |
 |----------------------|----------|-----------------------|

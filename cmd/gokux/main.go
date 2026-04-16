@@ -2,6 +2,7 @@
 package main
 
 import (
+	"flag"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -17,8 +18,16 @@ import (
 )
 
 func main() {
-	// Load 12-factor configuration from environment variables.
-	cfg, err := config.Load()
+	// Parse CLI flags for config file paths (-f can be repeated).
+	var configFiles []string
+	flag.Func("f", "config file path (can be repeated; later files override earlier)", func(s string) error {
+		configFiles = append(configFiles, s)
+		return nil
+	})
+	flag.Parse()
+
+	// Load layered configuration: YAML files → env vars.
+	cfg, err := config.Load(configFiles...)
 	if err != nil {
 		// Fall back to stderr since logger may not be available.
 		panic("failed to load config: " + err.Error())

@@ -5,6 +5,7 @@ go 1.25.1
 require (
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/nil-go/konf v1.4.0
+	github.com/nil-go/konf/provider/file v1.4.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/samber/slog-zap/v2 v2.6.4
 	go.uber.org/zap v1.27.1
@@ -13,6 +14,7 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

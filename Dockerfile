@@ -20,9 +20,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 FROM gcr.io/distroless/static:nonroot
 
 COPY --from=builder /gokux /gokux
+COPY config.yaml /config.yaml
 
 USER nonroot:nonroot
 
 EXPOSE 8080
 
-ENTRYPOINT ["/gokux"]
+ENTRYPOINT ["/gokux", "-f", "/config.yaml"]

@@ -1,9 +1,13 @@
-// Package config provides 12-factor app configuration via environment variables using konf.
+// Package config provides layered configuration loading:
+// YAML files (cascading) → environment variables (GOKUX_ prefix).
 package config
 
 import (
+	"fmt"
+
 	"github.com/nil-go/konf"
 	"github.com/nil-go/konf/provider/env"
+	"github.com/nil-go/konf/provider/file"
 )
 
 // Config holds the application configuration.
@@ -22,19 +26,31 @@ type LogConfig struct {
 	Level string
 }
 
-// Load reads configuration from environment variables with the GOKUX_ prefix
-// and sets it as the default konf configuration.
+// Load reads configuration from YAML files (in order, later overrides earlier)
+// then from environment variables with the GOKUX_ prefix.
 //
-// Environment variables:
-//   - GOKUX_SERVER_PORT  (default: 8080)
-//   - GOKUX_LOG_LEVEL    (default: "info")
-func Load() (*Config, error) {
+// Precedence (highest wins):
+//  1. Environment variables (GOKUX_SERVER_PORT, GOKUX_LOG_LEVEL, ...)
+//  2. Last YAML file specified via -f
+//  3. Earlier YAML files
+//  4. Built-in defaults
+func Load(files ...string) (*Config, error) {
 	var k konf.Config
+
+	// Load each YAML file in order; later files override earlier ones.
+	for _, f := range files {
+		if err := k.Load(file.New(f)); err != nil {
+			return nil, fmt.Errorf("loading config %s: %w", f, err)
+		}
+	}
+
+	// Environment variables override everything.
 	if err := k.Load(env.New(env.WithPrefix("GOKUX"))); err != nil {
 		return nil, err
 	}
 	konf.SetDefault(&k)
 
+	// Start with built-in defaults.
 	cfg := &Config{
 		Server: ServerConfig{
 			Port: 8080,
