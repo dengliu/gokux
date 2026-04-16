@@ -36,7 +36,7 @@ func main() {
 	// Start the server in a goroutine.
 	go func() {
 		if err := srv.Start(); err != nil {
-			logger.Info("server stopped", slog.String("error", err.Error()))
+			logger.Info("server stopped", "error", err.Error())
 		}
 	}()
 
@@ -44,11 +44,11 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
-	logger.Info("received shutdown signal", slog.String("signal", sig.String()))
+	logger.Info("received shutdown signal", "signal", sig.String())
 
 	// Graceful shutdown with a 10-second timeout.
 	if err := srv.Shutdown(10 * time.Second); err != nil {
-		logger.Error("server shutdown error", slog.String("error", err.Error()))
+		logger.Error("server shutdown error", "error", err.Error())
 		os.Exit(1)
 	}
 

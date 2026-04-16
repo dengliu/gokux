@@ -55,7 +55,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger) *Server {
 // Start begins listening on the configured port. This call blocks.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Config.Server.Port)
-	s.Logger.Info("starting server", slog.String("addr", addr))
+	s.Logger.Info("starting server", "addr", addr)
 
 	return s.Echo.Start(addr)
 }
@@ -70,8 +70,7 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	s.ready.Store(false)
 
 	// Allow time for load balancers to detect the readiness change.
-	s.Logger.Info("waiting for in-flight requests to drain",
-		slog.Duration("drain", 3*time.Second))
+	s.Logger.Info("waiting for in-flight requests to drain", "drain", 3*time.Second)
 	time.Sleep(3 * time.Second)
 
 	// Create a context with a timeout for the shutdown.
@@ -103,12 +102,12 @@ func SlogMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
 			}
 
 			logger.Info("request",
-				slog.String("method", req.Method),
-				slog.String("path", path),
-				slog.Int("status", res.Status),
-				slog.Duration("latency", latency),
-				slog.String("remote_ip", c.RealIP()),
-				slog.String("user_agent", req.UserAgent()),
+				"method", req.Method,
+				"path", path,
+				"status", res.Status,
+				"latency", latency,
+				"remote_ip", c.RealIP(),
+				"user_agent", req.UserAgent(),
 			)
 
 			return nil
