@@ -4,7 +4,7 @@
 APP_NAME    := gokux
 CMD_PATH    := ./cmd/gokux
 BUILD_DIR   := bin
-IMAGE       := ghcr.io/deng/gokux
+IMAGE       := ghcr.io/dengliu/gokux
 TAG         ?= latest
 
 # Build the binary

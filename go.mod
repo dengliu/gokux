@@ -1,4 +1,4 @@
-module github.com/deng/gokux
+module github.com/dengliu/gokux
 
 go 1.25.1
 

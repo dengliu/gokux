@@ -10,8 +10,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/deng/gokux/pkg/api"
-	"github.com/deng/gokux/pkg/config"
+	"github.com/dengliu/gokux/pkg/api"
+	"github.com/dengliu/gokux/pkg/config"
 )
 
 func main() {

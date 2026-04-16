@@ -11,7 +11,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
 
-	"github.com/deng/gokux/pkg/config"
+	"github.com/dengliu/gokux/pkg/config"
 )
 
 // Server wraps an Echo instance with application dependencies.
