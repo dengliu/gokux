@@ -8,6 +8,7 @@ import (
 	"github.com/nil-go/konf"
 	"github.com/nil-go/konf/provider/env"
 	"github.com/nil-go/konf/provider/file"
+	"gopkg.in/yaml.v3"
 )
 
 // Config holds the application configuration.
@@ -39,7 +40,7 @@ func Load(files ...string) (*Config, error) {
 
 	// Load each YAML file in order; later files override earlier ones.
 	for _, f := range files {
-		if err := k.Load(file.New(f)); err != nil {
+		if err := k.Load(file.New(f, file.WithUnmarshal(yaml.Unmarshal))); err != nil {
 			return nil, fmt.Errorf("loading config %s: %w", f, err)
 		}
 	}
