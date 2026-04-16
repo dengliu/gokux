@@ -4,12 +4,12 @@ package api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"go.uber.org/zap"
 
 	"github.com/dengliu/gokux/pkg/config"
 )
@@ -18,12 +18,12 @@ import (
 type Server struct {
 	Echo   *echo.Echo
 	Config *config.Config
-	Logger *zap.Logger
+	Logger *slog.Logger
 	ready  *atomic.Bool
 }
 
 // NewServer creates a configured Echo server with all routes and middleware.
-func NewServer(cfg *config.Config, logger *zap.Logger) *Server {
+func NewServer(cfg *config.Config, logger *slog.Logger) *Server {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
@@ -33,7 +33,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) *Server {
 
 	// Middleware
 	e.Use(middleware.Recover())
-	e.Use(ZapMiddleware(logger))
+	e.Use(SlogMiddleware(logger))
 	e.Use(MetricsMiddleware())
 
 	// Health check routes
@@ -55,7 +55,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) *Server {
 // Start begins listening on the configured port. This call blocks.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Config.Server.Port)
-	s.Logger.Info("starting server", zap.String("addr", addr))
+	s.Logger.Info("starting server", slog.String("addr", addr))
 
 	return s.Echo.Start(addr)
 }
@@ -70,7 +70,8 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	s.ready.Store(false)
 
 	// Allow time for load balancers to detect the readiness change.
-	s.Logger.Info("waiting for in-flight requests to drain", zap.Duration("drain", 3*time.Second))
+	s.Logger.Info("waiting for in-flight requests to drain",
+		slog.Duration("drain", 3*time.Second))
 	time.Sleep(3 * time.Second)
 
 	// Create a context with a timeout for the shutdown.
@@ -80,8 +81,8 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	return s.Echo.Shutdown(ctx)
 }
 
-// ZapMiddleware returns an Echo middleware that logs each request using zap.
-func ZapMiddleware(logger *zap.Logger) echo.MiddlewareFunc {
+// SlogMiddleware returns an Echo middleware that logs each request using slog.
+func SlogMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			start := time.Now()
@@ -102,12 +103,12 @@ func ZapMiddleware(logger *zap.Logger) echo.MiddlewareFunc {
 			}
 
 			logger.Info("request",
-				zap.String("method", req.Method),
-				zap.String("path", path),
-				zap.Int("status", res.Status),
-				zap.Duration("latency", latency),
-				zap.String("remote_ip", c.RealIP()),
-				zap.String("user_agent", req.UserAgent()),
+				slog.String("method", req.Method),
+				slog.String("path", path),
+				slog.Int("status", res.Status),
+				slog.Duration("latency", latency),
+				slog.String("remote_ip", c.RealIP()),
+				slog.String("user_agent", req.UserAgent()),
 			)
 
 			return nil

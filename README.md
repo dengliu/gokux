@@ -9,7 +9,7 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 - **Health checks** — Kubernetes liveness (`/healthz`) and readiness (`/readyz`) probes
 - **Prometheus metrics** — HTTP request duration, request count, and Go runtime metrics at `/metrics`
 - **12-factor config** — Environment-based configuration via [konf](https://github.com/nil-go/konf)
-- **Structured logging** — JSON logging with [zap](https://github.com/uber-go/zap)
+- **Structured logging** — `log/slog` interface with [zap](https://github.com/uber-go/zap) backend via [slog-zap](https://github.com/samber/slog-zap)
 - **Graceful shutdown** — Clean shutdown on `SIGINT`/`SIGTERM` with request draining
 - **Multi-arch images** — `linux/amd64` and `linux/arm64` via Docker buildx and GitHub Actions
 

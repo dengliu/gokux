@@ -6,6 +6,7 @@ require (
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/nil-go/konf v1.4.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/samber/slog-zap/v2 v2.6.4
 	go.uber.org/zap v1.27.1
 )
 
@@ -19,9 +20,11 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/samber/lo v1.53.0 // indirect
+	github.com/samber/slog-common v0.21.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
-	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
