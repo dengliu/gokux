@@ -11,9 +11,9 @@ TAG         ?= latest
 build:
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/$(APP_NAME) $(CMD_PATH)
 
-# Run locally
+# Run locally with default config
 run: build
-	$(BUILD_DIR)/$(APP_NAME)
+	$(BUILD_DIR)/$(APP_NAME) -f config.yaml
 
 # Run tests with race detection
 test:
