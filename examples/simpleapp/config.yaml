@@ -1,0 +1,7 @@
+server:
+  port: 8080
+  shutdown_timeout_seconds: 10  # hard deadline for in-flight requests during shutdown
+  drain_wait_seconds: 3         # pause after marking not-ready, before closing listeners
+
+log:
+  level: info

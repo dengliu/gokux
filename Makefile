@@ -1,23 +1,26 @@
-.PHONY: build run test lint docker-build docker-push clean
+.PHONY: build run test test-all lint docker-build docker-push clean
 
 # Variables
-APP_NAME    := gokux
-CMD_PATH    := ./examples/simpleapp
+APP_NAME    := simpleapp
 BUILD_DIR   := bin
 IMAGE       := ghcr.io/dengliu/gokux
 TAG         ?= latest
 
-# Build the binary
+# Build the example binary
 build:
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/$(APP_NAME) $(CMD_PATH)
+	cd examples/simpleapp && CGO_ENABLED=0 go build -ldflags="-s -w" -o ../../$(BUILD_DIR)/$(APP_NAME) .
 
-# Run locally with default config
+# Run the example locally with default config
 run: build
-	$(BUILD_DIR)/$(APP_NAME) -f config.yaml
+	$(BUILD_DIR)/$(APP_NAME) -f examples/simpleapp/config.yaml
 
-# Run tests with race detection
+# Run library tests
 test:
 	go test -v -race -coverprofile=coverage.out ./...
+
+# Run all tests (library + example)
+test-all: test
+	cd examples/simpleapp && go build ./...
 
 # Lint with golangci-lint
 lint:
@@ -27,6 +30,7 @@ lint:
 docker-build:
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
+		-f examples/simpleapp/Dockerfile \
 		-t $(IMAGE):$(TAG) \
 		.
 
@@ -34,6 +38,7 @@ docker-build:
 docker-push:
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
+		-f examples/simpleapp/Dockerfile \
 		-t $(IMAGE):$(TAG) \
 		--push \
 		.
