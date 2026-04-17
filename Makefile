@@ -1,7 +1,5 @@
 .PHONY: test lint clean
 
-GOLANGCI_LINT_VERSION := v2.1.6
-
 # Run library tests
 test:
 	go test -v -race -coverprofile=coverage.out ./...
@@ -12,7 +10,7 @@ lint:
 		-v $(PWD):/app \
 		-v $(HOME)/go/pkg/mod:/root/go/pkg/mod:ro \
 		-w /app \
-		golangci/golangci-lint:$(GOLANGCI_LINT_VERSION) \
+		golangci/golangci-lint:latest \
 		golangci-lint run ./...
 
 # Remove build artifacts
