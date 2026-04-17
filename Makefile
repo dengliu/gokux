@@ -17,7 +17,7 @@ run: build
 
 # Run tests with race detection
 test:
-	go test -race -coverprofile=coverage.out ./...
+	go test -v -race -coverprofile=coverage.out ./...
 
 # Lint with golangci-lint
 lint:
