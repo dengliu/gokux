@@ -10,7 +10,9 @@ import (
 
 	"github.com/dengliu/gokux"
 	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func main() {
@@ -51,10 +53,20 @@ func main() {
 		metric.WithDescription("Total hello requests"),
 	)
 
+	// Create a custom tracer for application-specific spans.
+	tracer := app.Tracer("simpleapp")
+
 	// Register application routes using the Echo instance directly.
 	app.Server.Echo.GET("/", func(c echo.Context) error {
+		// The otelecho middleware already creates a parent span for the request.
+		// Create a child span for application logic.
+		ctx, span := tracer.Start(c.Request().Context(), "handle-hello",
+			trace.WithAttributes(attribute.String("greeting", "hello")),
+		)
+		defer span.End()
+
 		app.Logger.Info("handling request", "path", c.Path())
-		helloCount.Add(c.Request().Context(), 1)
+		helloCount.Add(ctx, 1)
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "hello"})
 	})
