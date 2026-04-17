@@ -2,8 +2,6 @@ package gokux
 
 import (
 	"log/slog"
-
-	"github.com/labstack/echo/v4"
 )
 
 // Option configures an App.
@@ -13,7 +11,6 @@ type options struct {
 	configFiles []string
 	envPrefix   string
 	logger      *slog.Logger
-	routes      []func(*echo.Echo)
 }
 
 // WithConfigFiles sets the YAML config file paths to load.
@@ -39,14 +36,5 @@ func WithEnvPrefix(prefix string) Option {
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *options) {
 		o.logger = logger
-	}
-}
-
-// WithRoutes registers application-specific routes on the Echo instance.
-// This is called after built-in routes (health, metrics) are registered
-// but before the server starts. Can be called multiple times.
-func WithRoutes(register func(*echo.Echo)) Option {
-	return func(o *options) {
-		o.routes = append(o.routes, register)
 	}
 }

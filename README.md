@@ -39,17 +39,34 @@ func main() {
     app := gokux.New(
         gokux.WithConfigFiles("config.yaml"),
         gokux.WithEnvPrefix("MYAPP_"),
-        gokux.WithRoutes(func(e *echo.Echo) {
-            e.GET("/api/hello", func(c echo.Context) error {
-                return c.JSON(http.StatusOK, map[string]string{"message": "hello"})
-            })
-        }),
     )
+
+    // Init loads config, creates logger, and builds the server.
+    if err := app.Init(); err != nil {
+        panic(err)
+    }
+
+    // Register routes — app.Logger, app.Config, app.Server are now available.
+    app.Server.Echo.GET("/api/hello", func(c echo.Context) error {
+        app.Logger.Info("handling request", "path", c.Path())
+        return c.JSON(http.StatusOK, map[string]string{"message": "hello"})
+    })
+
+    // Run starts the server and blocks until SIGINT/SIGTERM.
     if err := app.Run(); err != nil {
         panic(err)
     }
 }
 ```
+
+### Lifecycle: New → Init → (register routes) → Run
+
+1. **`gokux.New(opts...)`** — creates an App with configuration options
+2. **`app.Init()`** — loads config, creates logger, builds the HTTP server. After this, `app.Config`, `app.Logger`, and `app.Server` are available.
+3. **Register routes/middleware** — use `app.Server.Echo` directly (supports global, per-group, and per-route middleware)
+4. **`app.Run()`** — starts the server, blocks until shutdown signal, performs graceful shutdown
+
+> **Note:** If you skip `Init()`, `Run()` calls it automatically. The explicit `Init()` is only needed when you want to access `app.Logger` or register routes before starting.
 
 ### Available Options
 
@@ -58,7 +75,6 @@ func main() {
 | `WithConfigFiles(files...)` | YAML config files to load (later overrides earlier) |
 | `WithEnvPrefix(prefix)` | Environment variable prefix (default: `GOKUX_`) |
 | `WithLogger(logger)` | Provide a pre-configured `*slog.Logger` |
-| `WithRoutes(func(*echo.Echo))` | Register application routes (can be called multiple times) |
 
 ### What You Get for Free
 
