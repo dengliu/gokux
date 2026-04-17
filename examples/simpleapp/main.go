@@ -11,6 +11,7 @@ import (
 	"github.com/dengliu/gokux"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -24,8 +25,15 @@ func main() {
 	})
 	flag.Parse()
 
+	// Create a stdout trace exporter for development (prints spans to stdout).
+	traceExporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		panic(err)
+	}
+
 	app := gokux.New(
 		gokux.WithConfigFiles(configFiles...),
+		gokux.WithTraceExporter(traceExporter),
 	)
 
 	// Init loads config, creates logger, and builds the server.
