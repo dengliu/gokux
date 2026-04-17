@@ -7,7 +7,7 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 ## Features
 
 - **Health checks** — Kubernetes liveness (`/healthz`) and readiness (`/readyz`) probes
-- **Prometheus metrics** — HTTP request duration, request count, and Go runtime metrics at `/metrics`
+- **OpenTelemetry metrics** — HTTP request duration and count following [OTel semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/), exposed at `/metrics` in Prometheus format
 - **12-factor config** — Environment-based configuration via [konf](https://github.com/nil-go/konf)
 - **Structured logging** — `log/slog` interface with [zap](https://github.com/uber-go/zap) backend via [slog-zap](https://github.com/samber/slog-zap)
 - **Graceful shutdown** — Clean shutdown on `SIGINT`/`SIGTERM` with configurable drain wait and shutdown timeout
@@ -19,7 +19,7 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 |---------------|--------|------------------------------------------------|
 | `/healthz`    | GET    | Liveness probe — returns `200` when alive      |
 | `/readyz`     | GET    | Readiness probe — returns `200` when ready, `503` during drain |
-| `/metrics`    | GET    | Prometheus metrics (request duration + Go runtime) |
+| `/metrics`    | GET    | OpenTelemetry metrics in Prometheus format          |
 
 ## Using as a Library
 
@@ -110,7 +110,7 @@ Response example when a check fails (`/readyz`):
 
 - `/healthz` — Kubernetes liveness probe
 - `/readyz` — Kubernetes readiness probe (fails during drain)
-- `/metrics` — Prometheus metrics (request duration, count, Go runtime)
+- `/metrics` — OpenTelemetry metrics in Prometheus format (OTel semantic conventions)
 - Structured logging (zap + slog)
 - Graceful shutdown with configurable drain wait and timeout
 - Signal handling (SIGINT/SIGTERM)
@@ -182,6 +182,34 @@ All configuration can also be set via environment variables with the `GOKUX_` pr
 > field names are concatenated without underscores (e.g., `DRAINWAITSECONDS` maps to the struct
 > field `DrainWaitSeconds`). Use YAML config files for more readable multi-word key names like
 > `drain_wait_seconds`.
+
+## Metrics
+
+Metrics are instrumented with [OpenTelemetry](https://opentelemetry.io/) and exported in Prometheus format via the OTel Prometheus exporter. The `/metrics` endpoint is compatible with existing Prometheus/Grafana/Datadog scrapers.
+
+### Built-in HTTP metrics (OTel semantic conventions)
+
+| Metric | Type | Unit | Description |
+|---|---|---|---|
+| `http.server.request.duration` | Histogram | `s` | Duration of HTTP server requests |
+| `http.server.request.count` | Counter | `{request}` | Total number of HTTP server requests |
+
+### Attributes
+
+| Attribute | Description | Example |
+|---|---|---|
+| `http.request.method` | HTTP method | `GET` |
+| `url.path` | Request path | `/api/hello` |
+| `http.response.status_code` | Response status code | `200` |
+
+Health check (`/healthz`, `/readyz`) and metrics (`/metrics`) endpoints are excluded from instrumentation to reduce noise.
+
+### Architecture
+
+Each server instance creates a dedicated `prometheus.Registry` (no global state), an OTel `MeterProvider` with a Prometheus exporter, and registers Go runtime + process collectors. This means:
+- Multiple servers in tests don't conflict
+- The meter provider has explicit lifecycle (created in `NewServer`, can be shut down cleanly)
+- Consumers can extend by creating additional OTel instruments on the same meter provider
 
 ## Docker
 
