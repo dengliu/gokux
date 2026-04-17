@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,8 +33,7 @@ func TestEnvVarShutdownTimeoutSeconds(t *testing.T) {
 
 func TestEnvVarCaseInsensitive(t *testing.T) {
 	// Lowercase prefix does not match — the GOKUX_ prefix filter is case-sensitive.
-	os.Setenv("gokux_server_port", "7070")
-	defer os.Unsetenv("gokux_server_port")
+	t.Setenv("gokux_server_port", "7070")
 
 	cfg, err := Load()
 	require.NoError(t, err)

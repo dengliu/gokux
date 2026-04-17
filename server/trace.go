@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // traceProvider holds the OTel TracerProvider for distributed tracing.
@@ -50,7 +51,7 @@ func (t *traceProvider) TracerProvider() *sdktrace.TracerProvider {
 // If tracing is not configured, returns the global noop tracer.
 func (t *traceProvider) Tracer(name string) trace.Tracer {
 	if t.provider == nil {
-		return trace.NewNoopTracerProvider().Tracer(name)
+		return noop.NewTracerProvider().Tracer(name)
 	}
 
 	return t.provider.Tracer(name)
