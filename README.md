@@ -66,7 +66,31 @@ func main() {
 3. **Register routes/middleware** — use `app.Server.Echo` directly (supports global, per-group, and per-route middleware)
 4. **`app.Run()`** — starts the server, blocks until shutdown signal, performs graceful shutdown
 
-> **Note:** If you skip `Init()`, `Run()` calls it automatically. The explicit `Init()` is only needed when you want to access `app.Logger` or register routes before starting.
+> **Note:** If you skip `Init()`, `Run()` calls it automatically. The explicit `Init()` is only needed when you want to access `app.Logger`, register routes, or add health checks before starting.
+
+### Custom Health Checks
+
+Register dependency checks that are evaluated on every `/healthz` or `/readyz` request:
+
+```go
+// Readiness check — /readyz returns 503 if database is down
+app.AddReadinessCheck("database", func() error {
+    return db.Ping()
+})
+
+// Liveness check — /healthz returns 503 if critical subsystem is stuck
+app.AddLivenessCheck("worker", func() error {
+    if worker.IsStuck() {
+        return errors.New("worker goroutine is stuck")
+    }
+    return nil
+})
+```
+
+Response example when a check fails (`/readyz`):
+```json
+{"status": "not ready", "database": "connection refused", "cache": "ok"}
+```
 
 ### Available Options
 

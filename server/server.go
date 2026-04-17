@@ -20,6 +20,7 @@ type Server struct {
 	Config *config.Config
 	Logger *slog.Logger
 	ready  *atomic.Bool
+	health *healthHandler
 }
 
 // NewServer creates a configured Echo server with all routes and middleware.
@@ -49,6 +50,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger) *Server {
 		Config: cfg,
 		Logger: logger,
 		ready:  ready,
+		health: health,
 	}
 }
 

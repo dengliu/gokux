@@ -3,8 +3,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/dengliu/gokux"
 	"github.com/labstack/echo/v4"
@@ -28,6 +30,18 @@ func main() {
 	if err := app.Init(); err != nil {
 		panic(err)
 	}
+
+	// Register custom health checks.
+	// Readiness: check if a dependency (e.g., database) is available.
+	dbReady := &atomic.Bool{}
+	dbReady.Store(true) // simulate a healthy database
+	app.AddReadinessCheck("database", func() error {
+		if !dbReady.Load() {
+			return errors.New("database connection lost")
+		}
+
+		return nil
+	})
 
 	// Register application routes using the Echo instance directly.
 	app.Server.Echo.GET("/", func(c echo.Context) error {

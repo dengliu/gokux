@@ -89,6 +89,20 @@ func (a *App) Init() error {
 	return nil
 }
 
+// AddLivenessCheck registers a named liveness check on the server.
+// If any check fails, /healthz returns 503.
+// Must be called after Init.
+func (a *App) AddLivenessCheck(name string, check server.HealthCheck) {
+	a.Server.AddLivenessCheck(name, check)
+}
+
+// AddReadinessCheck registers a named readiness check on the server.
+// If any check fails (or the server is draining), /readyz returns 503.
+// Must be called after Init.
+func (a *App) AddReadinessCheck(name string, check server.HealthCheck) {
+	a.Server.AddReadinessCheck(name, check)
+}
+
 // Run starts the server and blocks until SIGINT or SIGTERM is received.
 // It then performs a graceful shutdown and returns any error.
 // If Init has not been called, Run calls it automatically.
