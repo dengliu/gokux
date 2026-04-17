@@ -48,7 +48,9 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 
 	// Middleware
 	e.Use(middleware.Recover())
-	e.Use(otelecho.Middleware("gokux"))
+	if traceExporter != nil {
+		e.Use(otelecho.Middleware("gokux"))
+	}
 	e.Use(SlogMiddleware(logger))
 	e.Use(metricsMiddleware(mp))
 

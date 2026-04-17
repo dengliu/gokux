@@ -15,14 +15,17 @@ type traceProvider struct {
 }
 
 // newTraceProvider creates a TracerProvider with the given SpanExporter.
-// If exporter is nil, a noop provider is used (no tracing overhead).
+// If exporter is nil, returns a traceProvider wrapping the default noop —
+// no SDK TracerProvider is created and no middleware overhead is added.
 func newTraceProvider(exporter sdktrace.SpanExporter) *traceProvider {
-	var opts []sdktrace.TracerProviderOption
-	if exporter != nil {
-		opts = append(opts, sdktrace.WithBatcher(exporter))
+	if exporter == nil {
+		// No exporter: true noop — zero allocations, zero overhead.
+		return &traceProvider{provider: nil}
 	}
 
-	provider := sdktrace.NewTracerProvider(opts...)
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+	)
 
 	// Set as global so otelecho middleware and other OTel integrations use it.
 	otel.SetTracerProvider(provider)
@@ -38,16 +41,27 @@ func newTraceProvider(exporter sdktrace.SpanExporter) *traceProvider {
 }
 
 // TracerProvider returns the underlying OTel TracerProvider.
+// Returns nil if tracing is not configured (noop mode).
 func (t *traceProvider) TracerProvider() *sdktrace.TracerProvider {
 	return t.provider
 }
 
 // Tracer returns a Tracer scoped to the given instrumentation name.
+// If tracing is not configured, returns the global noop tracer.
 func (t *traceProvider) Tracer(name string) trace.Tracer {
+	if t.provider == nil {
+		return trace.NewNoopTracerProvider().Tracer(name)
+	}
+
 	return t.provider.Tracer(name)
 }
 
 // Shutdown flushes pending spans and stops the provider.
+// If tracing is not configured, this is a no-op.
 func (t *traceProvider) Shutdown(ctx context.Context) error {
+	if t.provider == nil {
+		return nil
+	}
+
 	return t.provider.Shutdown(ctx)
 }
