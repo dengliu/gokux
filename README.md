@@ -21,6 +21,54 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 | `/readyz`     | GET    | Readiness probe — returns `200` when ready, `503` during drain |
 | `/metrics`    | GET    | Prometheus metrics (request duration + Go runtime) |
 
+## Using as a Library
+
+Other developers can import gokux to build their own Kubernetes-ready service:
+
+```go
+package main
+
+import (
+    "net/http"
+
+    "github.com/dengliu/gokux"
+    "github.com/labstack/echo/v4"
+)
+
+func main() {
+    app := gokux.New(
+        gokux.WithConfigFiles("config.yaml"),
+        gokux.WithEnvPrefix("MYAPP_"),
+        gokux.WithRoutes(func(e *echo.Echo) {
+            e.GET("/api/hello", func(c echo.Context) error {
+                return c.JSON(http.StatusOK, map[string]string{"message": "hello"})
+            })
+        }),
+    )
+    if err := app.Run(); err != nil {
+        panic(err)
+    }
+}
+```
+
+### Available Options
+
+| Option | Description |
+|---|---|
+| `WithConfigFiles(files...)` | YAML config files to load (later overrides earlier) |
+| `WithEnvPrefix(prefix)` | Environment variable prefix (default: `GOKUX_`) |
+| `WithLogger(logger)` | Provide a pre-configured `*slog.Logger` |
+| `WithRoutes(func(*echo.Echo))` | Register application routes (can be called multiple times) |
+
+### What You Get for Free
+
+- `/healthz` — Kubernetes liveness probe
+- `/readyz` — Kubernetes readiness probe (fails during drain)
+- `/metrics` — Prometheus metrics (request duration, count, Go runtime)
+- Structured logging (zap + slog)
+- Graceful shutdown with configurable drain wait and timeout
+- Signal handling (SIGINT/SIGTERM)
+
 ## Quick Start
 
 ```bash
@@ -171,8 +219,10 @@ readinessProbe:
 
 ```
 gokux/
+├── gokux.go                 # App struct, New(), Run() — reusable entrypoint
+├── option.go                # Functional options (WithConfigFiles, WithRoutes, etc.)
 ├── cmd/gokux/
-│   └── main.go              # Entrypoint, signal handling, graceful shutdown
+│   └── main.go              # Reference CLI using gokux.New()
 ├── pkg/
 │   ├── api/
 │   │   ├── server.go        # Echo server, routing, middleware

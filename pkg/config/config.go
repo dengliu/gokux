@@ -1,5 +1,5 @@
 // Package config provides layered configuration loading:
-// YAML files (cascading) → environment variables (GOKUX_ prefix).
+// YAML files (cascading) → environment variables (configurable prefix).
 package config
 
 import (
@@ -13,7 +13,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const envPrefix = "GOKUX_"
+// DefaultEnvPrefix is the default environment variable prefix.
+const DefaultEnvPrefix = "GOKUX_"
 
 // Config holds the application configuration.
 type Config struct {
@@ -43,32 +44,63 @@ type LogConfig struct {
 	Level string
 }
 
+// LoadOption configures how configuration is loaded.
+type LoadOption func(*loadOptions)
+
+type loadOptions struct {
+	envPrefix string
+	files     []string
+}
+
+// WithEnvPrefix sets the environment variable prefix (default: "GOKUX_").
+// The prefix must end with "_".
+func WithEnvPrefix(prefix string) LoadOption {
+	return func(o *loadOptions) {
+		o.envPrefix = prefix
+	}
+}
+
+// WithFiles sets the YAML config file paths to load.
+func WithFiles(files ...string) LoadOption {
+	return func(o *loadOptions) {
+		o.files = files
+	}
+}
+
 // Load reads configuration from YAML files (in order, later overrides earlier)
-// then from environment variables with the GOKUX_ prefix.
+// then from environment variables with the configured prefix.
 //
 // Precedence (highest wins):
-//  1. Environment variables (GOKUX_SERVER_PORT, GOKUX_LOG_LEVEL, ...)
-//  2. Last YAML file specified via -f
+//  1. Environment variables ({PREFIX}SERVER_PORT, {PREFIX}LOG_LEVEL, ...)
+//  2. Last YAML file
 //  3. Earlier YAML files
 //  4. Built-in defaults
-func Load(files ...string) (*Config, error) {
+func Load(opts ...LoadOption) (*Config, error) {
+	o := &loadOptions{
+		envPrefix: DefaultEnvPrefix,
+	}
+	for _, opt := range opts {
+		opt(o)
+	}
+
 	var k konf.Config
 
 	// Load each YAML file in order; later files override earlier ones.
-	for _, f := range files {
+	for _, f := range o.files {
 		if err := k.Load(file.New(f, file.WithUnmarshal(yaml.Unmarshal))); err != nil {
 			return nil, fmt.Errorf("loading config %s: %w", f, err)
 		}
 	}
 
 	// Environment variables override everything.
-	// WithPrefix filters to GOKUX_* vars; WithNameSplitter strips the
-	// prefix before splitting by "_" so GOKUX_SERVER_PORT maps to server.port
-	// instead of gokux.server.port.
+	// WithPrefix filters to {PREFIX}* vars; WithNameSplitter strips the
+	// prefix before splitting by "_" so {PREFIX}SERVER_PORT maps to server.port
+	// instead of {prefix}.server.port.
+	prefix := o.envPrefix
 	if err := k.Load(env.New(
-		env.WithPrefix(envPrefix),
+		env.WithPrefix(prefix),
 		env.WithNameSplitter(func(s string) []string {
-			return strings.Split(strings.TrimPrefix(s, envPrefix), "_")
+			return strings.Split(strings.TrimPrefix(s, prefix), "_")
 		}),
 	)); err != nil {
 		return nil, err

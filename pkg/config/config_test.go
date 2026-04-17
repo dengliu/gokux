@@ -9,7 +9,6 @@ import (
 )
 
 func TestEnvVarOverride(t *testing.T) {
-	// Set env var with GOKUX_ prefix
 	t.Setenv("GOKUX_SERVER_PORT", "9090")
 
 	cfg, err := Load()
@@ -18,8 +17,6 @@ func TestEnvVarOverride(t *testing.T) {
 }
 
 func TestEnvVarDrainWaitSeconds(t *testing.T) {
-	// Env var names concatenate words without underscores because "_"
-	// is the hierarchy delimiter (SERVER vs field name).
 	t.Setenv("GOKUX_SERVER_DRAINWAITSECONDS", "7")
 
 	cfg, err := Load()
@@ -53,4 +50,18 @@ func TestDefaults(t *testing.T) {
 	assert.Equal(t, 10, cfg.Server.ShutdownTimeoutSeconds)
 	assert.Equal(t, 3, cfg.Server.DrainWaitSeconds)
 	assert.Equal(t, "info", cfg.Log.Level)
+}
+
+func TestCustomEnvPrefix(t *testing.T) {
+	t.Setenv("MYAPP_SERVER_PORT", "3000")
+
+	cfg, err := Load(WithEnvPrefix("MYAPP_"))
+	require.NoError(t, err)
+	assert.Equal(t, 3000, cfg.Server.Port, "custom env prefix MYAPP_ should work")
+}
+
+func TestWithFiles(t *testing.T) {
+	cfg, err := Load(WithFiles("../../config.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, 8080, cfg.Server.Port)
 }
