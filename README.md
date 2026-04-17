@@ -10,6 +10,7 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 - **OpenTelemetry metrics** — HTTP request duration and count following [OTel semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/), exposed at `/metrics` in Prometheus format
 - **12-factor config** — Environment-based configuration via [konf](https://github.com/nil-go/konf)
 - **Structured logging** — `log/slog` interface with [zap](https://github.com/uber-go/zap) backend via [slog-zap](https://github.com/samber/slog-zap)
+- **Distributed tracing** — OTel tracing with automatic HTTP spans and W3C context propagation
 - **Graceful shutdown** — Clean shutdown on `SIGINT`/`SIGTERM` with configurable drain wait and shutdown timeout
 - **Multi-arch images** — `linux/amd64` and `linux/arm64` via Docker buildx and GitHub Actions
 
@@ -105,6 +106,7 @@ Response example when a check fails (`/readyz`):
 | `WithConfigFiles(files...)` | YAML config files to load (later overrides earlier) |
 | `WithEnvPrefix(prefix)` | Environment variable prefix (default: `GOKUX_`) |
 | `WithLogger(logger)` | Provide a pre-configured `*slog.Logger` |
+| `WithTraceExporter(exporter)` | OTel SpanExporter for distributed tracing (default: noop) |
 
 ### What You Get for Free
 
@@ -234,10 +236,70 @@ app.Server.Echo.POST("/orders", func(c echo.Context) error {
 
 ### Architecture
 
-Each server instance creates a dedicated `prometheus.Registry` (no global state), an OTel `MeterProvider` with a Prometheus exporter, and registers Go runtime + process collectors. This means:
+Each server instance creates a dedicated `prometheus.Registry` (no global state), an OTel `MeterProvider` with a Prometheus exporter, and an OTel `TracerProvider` for distributed tracing. This means:
 - Multiple servers in tests don't conflict
 - The meter provider has explicit lifecycle (created in `NewServer`, can be shut down cleanly)
 - Consumers can extend by creating additional OTel instruments on the same meter provider
+
+## Tracing
+
+Distributed tracing is built on [OpenTelemetry](https://opentelemetry.io/). By default, tracing uses a noop provider (zero overhead). Enable it by providing a `SpanExporter`:
+
+```go
+import "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+
+exporter, _ := stdouttrace.New()  // prints spans to stdout (dev)
+app := gokux.New(
+    gokux.WithTraceExporter(exporter),
+)
+```
+
+### Automatic HTTP spans
+
+Every incoming request automatically gets a span via the `otelecho` middleware with OTel semantic convention attributes:
+
+```
+GET /api/hello
+├── http.request.method: GET
+├── url.path: /api/hello
+├── http.response.status_code: 200
+└── http.route: /api/hello
+```
+
+### Custom spans
+
+Use `app.Tracer(name)` to create application-specific spans:
+
+```go
+tracer := app.Tracer("myapp/orders")
+
+app.Server.Echo.POST("/orders", func(c echo.Context) error {
+    ctx, span := tracer.Start(c.Request().Context(), "process-order")
+    defer span.End()
+    // ... process order ...
+    return c.JSON(http.StatusCreated, order)
+})
+```
+
+### Production setup (OTLP)
+
+For production, use the OTLP exporter to send traces to an OTel Collector:
+
+```go
+import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+
+exporter, _ := otlptracegrpc.New(ctx,
+    otlptracegrpc.WithEndpoint("otel-collector:4317"),
+    otlptracegrpc.WithInsecure(),
+)
+app := gokux.New(
+    gokux.WithTraceExporter(exporter),
+)
+```
+
+### Context propagation
+
+W3C TraceContext and Baggage propagation is configured automatically. Trace IDs are extracted from incoming `traceparent` headers and injected into outgoing requests, enabling end-to-end distributed tracing across services.
 
 ## Docker
 

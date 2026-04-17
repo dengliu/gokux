@@ -2,15 +2,18 @@ package gokux
 
 import (
 	"log/slog"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 // Option configures an App.
 type Option func(*options)
 
 type options struct {
-	configFiles []string
-	envPrefix   string
-	logger      *slog.Logger
+	configFiles   []string
+	envPrefix     string
+	logger        *slog.Logger
+	traceExporter sdktrace.SpanExporter
 }
 
 // WithConfigFiles sets the YAML config file paths to load.
@@ -36,5 +39,16 @@ func WithEnvPrefix(prefix string) Option {
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *options) {
 		o.logger = logger
+	}
+}
+
+// WithTraceExporter sets the OTel SpanExporter for distributed tracing.
+// Without this option, tracing uses a noop provider (no overhead).
+// Common exporters:
+//   - stdouttrace.New() — prints spans to stdout (development)
+//   - otlptracegrpc.New(ctx) — sends spans via OTLP gRPC (production)
+func WithTraceExporter(exporter sdktrace.SpanExporter) Option {
+	return func(o *options) {
+		o.traceExporter = exporter
 	}
 }

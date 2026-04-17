@@ -36,7 +36,7 @@ func TestNewServer(t *testing.T) {
 	cfg := testConfig()
 	logger := testLogger()
 
-	srv, err := NewServer(cfg, logger)
+	srv, err := NewServer(cfg, logger, nil)
 	require.NoError(t, err)
 
 	assert.NotNil(t, srv.Echo)
@@ -49,7 +49,7 @@ func TestNewServer(t *testing.T) {
 
 func TestNewServer_BuiltInRoutes(t *testing.T) {
 	cfg := testConfig()
-	srv, err := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger(), nil)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -80,7 +80,7 @@ func TestNewServer_BuiltInRoutes(t *testing.T) {
 
 func TestNewServer_MetricsRoute(t *testing.T) {
 	cfg := testConfig()
-	srv, err := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger(), nil)
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -94,7 +94,7 @@ func TestNewServer_MetricsRoute(t *testing.T) {
 func TestServer_StartAndShutdown(t *testing.T) {
 	cfg := testConfig()
 	cfg.Server.Port = 0 // let OS pick a free port
-	srv, err := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger(), nil)
 	require.NoError(t, err)
 
 	// Start in background.
@@ -114,7 +114,7 @@ func TestServer_StartAndShutdown(t *testing.T) {
 
 func TestServer_AddLivenessCheck(t *testing.T) {
 	cfg := testConfig()
-	srv, err := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger(), nil)
 	require.NoError(t, err)
 
 	called := false
@@ -134,7 +134,7 @@ func TestServer_AddLivenessCheck(t *testing.T) {
 
 func TestServer_AddReadinessCheck(t *testing.T) {
 	cfg := testConfig()
-	srv, err := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger(), nil)
 	require.NoError(t, err)
 
 	called := false

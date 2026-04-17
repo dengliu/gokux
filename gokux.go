@@ -27,6 +27,7 @@ import (
 	"github.com/dengliu/gokux/logging"
 	"github.com/dengliu/gokux/server"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // App is a Kubernetes-ready microservice with built-in health checks,
@@ -84,7 +85,7 @@ func (a *App) Init() error {
 		a.Logger = logger
 	}
 
-	srv, err := server.NewServer(cfg, a.Logger)
+	srv, err := server.NewServer(cfg, a.Logger, a.opts.traceExporter)
 	if err != nil {
 		return fmt.Errorf("create server: %w", err)
 	}
@@ -92,6 +93,13 @@ func (a *App) Init() error {
 	a.initialized = true
 
 	return nil
+}
+
+// Tracer returns an OTel Tracer scoped to the given instrumentation name.
+// Use it to create custom spans in application code.
+// Must be called after Init.
+func (a *App) Tracer(name string) trace.Tracer {
+	return a.Server.TracerProvider().Tracer(name)
 }
 
 // Meter returns an OTel Meter scoped to the given instrumentation name.

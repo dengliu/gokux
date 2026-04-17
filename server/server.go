@@ -10,7 +10,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/dengliu/gokux/config"
 )
@@ -23,11 +25,13 @@ type Server struct {
 	ready   *atomic.Bool
 	health  *healthHandler
 	metrics *metricsProvider
+	traces  *traceProvider
 }
 
 // NewServer creates a configured Echo server with all routes and middleware.
 // Returns an error if the OTel metrics provider fails to initialize.
-func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
+// The traceExporter is optional — pass nil for noop tracing.
+func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.SpanExporter) (*Server, error) {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
@@ -36,12 +40,15 @@ func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("create metrics provider: %w", err)
 	}
 
+	tp := newTraceProvider(traceExporter)
+
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
 
 	// Middleware
 	e.Use(middleware.Recover())
+	e.Use(otelecho.Middleware("gokux"))
 	e.Use(SlogMiddleware(logger))
 	e.Use(metricsMiddleware(mp))
 
@@ -60,6 +67,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		ready:   ready,
 		health:  health,
 		metrics: mp,
+		traces:  tp,
 	}, nil
 }
 
@@ -96,6 +104,12 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 // Use it to create custom meters for application-specific instruments.
 func (s *Server) MeterProvider() *sdkmetric.MeterProvider {
 	return s.metrics.provider
+}
+
+// TracerProvider returns the OTel TracerProvider used by this server.
+// Use it to create custom tracers for application-specific spans.
+func (s *Server) TracerProvider() *sdktrace.TracerProvider {
+	return s.traces.TracerProvider()
 }
 
 // AddLivenessCheck registers a named liveness check.
