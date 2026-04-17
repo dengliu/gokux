@@ -83,6 +83,18 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	return s.Echo.Shutdown(ctx)
 }
 
+// AddLivenessCheck registers a named liveness check.
+// If any liveness check fails, /healthz returns 503.
+func (s *Server) AddLivenessCheck(name string, check HealthCheck) {
+	s.health.AddLivenessCheck(name, check)
+}
+
+// AddReadinessCheck registers a named readiness check.
+// If any readiness check fails (or the server is draining), /readyz returns 503.
+func (s *Server) AddReadinessCheck(name string, check HealthCheck) {
+	s.health.AddReadinessCheck(name, check)
+}
+
 // SlogMiddleware returns an Echo middleware that logs each request using slog.
 func SlogMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
