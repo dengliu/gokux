@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nil-go/konf"
@@ -11,6 +12,8 @@ import (
 	"github.com/nil-go/konf/provider/file"
 	"gopkg.in/yaml.v3"
 )
+
+const envPrefix = "GOKUX_"
 
 // Config holds the application configuration.
 type Config struct {
@@ -59,7 +62,15 @@ func Load(files ...string) (*Config, error) {
 	}
 
 	// Environment variables override everything.
-	if err := k.Load(env.New(env.WithPrefix("GOKUX"))); err != nil {
+	// WithPrefix filters to GOKUX_* vars; WithNameSplitter strips the
+	// prefix before splitting by "_" so GOKUX_SERVER_PORT maps to server.port
+	// instead of gokux.server.port.
+	if err := k.Load(env.New(
+		env.WithPrefix(envPrefix),
+		env.WithNameSplitter(func(s string) []string {
+			return strings.Split(strings.TrimPrefix(s, envPrefix), "_")
+		}),
+	)); err != nil {
 		return nil, err
 	}
 	konf.SetDefault(&k)

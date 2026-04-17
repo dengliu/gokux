@@ -79,12 +79,18 @@ log:
 
 All configuration can also be set via environment variables with the `GOKUX_` prefix:
 
-| Variable                       | Default  | Description           |
-|--------------------------------|----------|-----------------------|
-| `GOKUX_SERVER_PORT`            | `8080`   | HTTP server port      |
-| `GOKUX_SERVER_SHUTDOWN_TIMEOUT_SECONDS`| `10`     | Hard deadline in seconds for in-flight requests during shutdown |
-| `GOKUX_SERVER_DRAIN_WAIT_SECONDS`      | `3`      | Pause in seconds before closing listeners |
-| `GOKUX_LOG_LEVEL`              | `info`   | Log level (debug, info, warn, error) |
+| Variable                              | Default  | Description           |
+|---------------------------------------|----------|-----------------------|
+| `GOKUX_SERVER_PORT`                   | `8080`   | HTTP server port      |
+| `GOKUX_SERVER_SHUTDOWNTIMEOUTSECONDS` | `10`     | Hard deadline in seconds for in-flight requests during shutdown |
+| `GOKUX_SERVER_DRAINWAITSECONDS`       | `3`      | Pause in seconds before closing listeners |
+| `GOKUX_LOG_LEVEL`                     | `info`   | Log level (debug, info, warn, error) |
+
+> **Note:** The `GOKUX_` prefix is case-sensitive (must be uppercase). Underscores (`_`) in env var
+> names act as hierarchy separators (e.g., `SERVER` → the `server` config section), so multi-word
+> field names are concatenated without underscores (e.g., `DRAINWAITSECONDS` maps to the struct
+> field `DrainWaitSeconds`). Use YAML config files for more readable multi-word key names like
+> `drain_wait_seconds`.
 
 ## Docker
 
