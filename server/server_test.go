@@ -40,8 +40,8 @@ func TestNewServer(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotNil(t, srv.Echo)
-	assert.Equal(t, cfg, srv.Config)
-	assert.Equal(t, logger, srv.Logger)
+	assert.Equal(t, cfg, srv.config)
+	assert.Equal(t, logger, srv.logger)
 	assert.True(t, srv.ready.Load(), "server should start in ready state")
 	assert.NotNil(t, srv.health)
 	assert.NotNil(t, srv.metrics)
@@ -154,7 +154,7 @@ func TestServer_AddReadinessCheck(t *testing.T) {
 
 func TestSlogMiddleware_SkipsHealthEndpoints(t *testing.T) {
 	logger := testLogger()
-	mw := SlogMiddleware(logger)
+	mw := slogMiddleware(logger)
 
 	e := newTestEcho()
 	e.Use(mw)

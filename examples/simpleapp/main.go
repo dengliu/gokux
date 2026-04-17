@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"net/http"
@@ -80,7 +81,7 @@ func main() {
 	})
 
 	// Run starts the server and blocks until SIGINT/SIGTERM.
-	if err := app.Run(); err != nil {
+	if err := app.Run(context.Background()); err != nil {
 		panic(err)
 	}
 }

@@ -8,20 +8,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dengliu/gokux/config"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-
-	"github.com/dengliu/gokux/config"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Server wraps an Echo instance with application dependencies.
 type Server struct {
 	Echo    *echo.Echo
-	Config  *config.Config
-	Logger  *slog.Logger
+	config  *config.Config
+	logger  *slog.Logger
 	ready   *atomic.Bool
 	health  *healthHandler
 	metrics *metricsProvider
@@ -31,6 +31,7 @@ type Server struct {
 // NewServer creates a configured Echo server with all routes and middleware.
 // Returns an error if the OTel metrics provider fails to initialize.
 // The traceExporter is optional — pass nil for noop tracing.
+// Most consumers should use gokux.New() + Init() instead of calling this directly.
 func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.SpanExporter) (*Server, error) {
 	ready := &atomic.Bool{}
 	ready.Store(true)
@@ -51,7 +52,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 	if traceExporter != nil {
 		e.Use(otelecho.Middleware("gokux"))
 	}
-	e.Use(SlogMiddleware(logger))
+	e.Use(slogMiddleware(logger))
 	e.Use(metricsMiddleware(mp))
 
 	// Health check routes
@@ -64,8 +65,8 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 
 	return &Server{
 		Echo:    e,
-		Config:  cfg,
-		Logger:  logger,
+		config:  cfg,
+		logger:  logger,
 		ready:   ready,
 		health:  health,
 		metrics: mp,
@@ -75,8 +76,8 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 
 // Start begins listening on the configured port. This call blocks.
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.Config.Server.Port)
-	s.Logger.Info("starting server", "addr", addr)
+	addr := fmt.Sprintf(":%d", s.config.Server.Port)
+	s.logger.Info("starting server", "addr", addr)
 
 	return s.Echo.Start(addr)
 }
@@ -84,15 +85,15 @@ func (s *Server) Start() error {
 // Shutdown performs a graceful shutdown: marks the service as not-ready,
 // waits for in-flight requests to drain, then stops the server.
 func (s *Server) Shutdown(timeout time.Duration) error {
-	s.Logger.Info("shutting down server")
+	s.logger.Info("shutting down server")
 
 	// Mark as not ready so readiness probe fails and
 	// Kubernetes stops sending new traffic.
 	s.ready.Store(false)
 
 	// Allow time for load balancers to detect the readiness change.
-	drainWait := s.Config.Server.DrainWaitDuration()
-	s.Logger.Info("waiting for in-flight requests to drain", "drain", drainWait)
+	drainWait := s.config.Server.DrainWaitDuration()
+	s.logger.Info("waiting for in-flight requests to drain", "drain", drainWait)
 	time.Sleep(drainWait)
 
 	// Create a context with a timeout for the shutdown.
@@ -109,9 +110,16 @@ func (s *Server) MeterProvider() *sdkmetric.MeterProvider {
 }
 
 // TracerProvider returns the OTel TracerProvider used by this server.
-// Use it to create custom tracers for application-specific spans.
+// Returns nil if tracing is not configured (noop mode).
+// For most use cases, prefer App.Tracer(name) instead.
 func (s *Server) TracerProvider() *sdktrace.TracerProvider {
 	return s.traces.TracerProvider()
+}
+
+// Tracer returns an OTel Tracer scoped to the given instrumentation name.
+// Safe to call even when tracing is not configured (returns noop tracer).
+func (s *Server) Tracer(name string) trace.Tracer {
+	return s.traces.Tracer(name)
 }
 
 // AddLivenessCheck registers a named liveness check.
@@ -126,8 +134,8 @@ func (s *Server) AddReadinessCheck(name string, check HealthCheck) {
 	s.health.AddReadinessCheck(name, check)
 }
 
-// SlogMiddleware returns an Echo middleware that logs each request using slog.
-func SlogMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
+// slogMiddleware returns an Echo middleware that logs each request using slog.
+func slogMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			start := time.Now()

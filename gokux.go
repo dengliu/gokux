@@ -11,12 +11,13 @@
 //
 //	app.Server.Echo.GET("/api/hello", helloHandler)
 //
-//	if err := app.Run(); err != nil {
+//	if err := app.Run(context.Background()); err != nil {
 //	    panic(err)
 //	}
 package gokux
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,6 +30,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// HealthCheck is a function that reports the health of a dependency.
+// Return nil if healthy, or an error describing the problem.
+type HealthCheck = server.HealthCheck
 
 // App is a Kubernetes-ready microservice with built-in health checks,
 // metrics, structured logging, and graceful shutdown.
@@ -97,9 +102,10 @@ func (a *App) Init() error {
 
 // Tracer returns an OTel Tracer scoped to the given instrumentation name.
 // Use it to create custom spans in application code.
+// Safe to call even when tracing is not configured (returns noop tracer).
 // Must be called after Init.
 func (a *App) Tracer(name string) trace.Tracer {
-	return a.Server.TracerProvider().Tracer(name)
+	return a.Server.Tracer(name)
 }
 
 // Meter returns an OTel Meter scoped to the given instrumentation name.
@@ -113,21 +119,22 @@ func (a *App) Meter(name string) metric.Meter {
 // AddLivenessCheck registers a named liveness check on the server.
 // If any check fails, /healthz returns 503.
 // Must be called after Init.
-func (a *App) AddLivenessCheck(name string, check server.HealthCheck) {
+func (a *App) AddLivenessCheck(name string, check HealthCheck) {
 	a.Server.AddLivenessCheck(name, check)
 }
 
 // AddReadinessCheck registers a named readiness check on the server.
 // If any check fails (or the server is draining), /readyz returns 503.
 // Must be called after Init.
-func (a *App) AddReadinessCheck(name string, check server.HealthCheck) {
+func (a *App) AddReadinessCheck(name string, check HealthCheck) {
 	a.Server.AddReadinessCheck(name, check)
 }
 
-// Run starts the server and blocks until SIGINT or SIGTERM is received.
-// It then performs a graceful shutdown and returns any error.
+// Run starts the server and blocks until the context is canceled or
+// SIGINT/SIGTERM is received. It then performs a graceful shutdown
+// and returns any error.
 // If Init has not been called, Run calls it automatically.
-func (a *App) Run() error {
+func (a *App) Run(ctx context.Context) error {
 	if !a.initialized {
 		if err := a.Init(); err != nil {
 			return fmt.Errorf("init: %w", err)
@@ -141,11 +148,16 @@ func (a *App) Run() error {
 		}
 	}()
 
-	// Wait for interrupt signal (SIGINT or SIGTERM).
+	// Wait for context cancellation or interrupt signal.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	a.Logger.Info("received shutdown signal", "signal", sig.String())
+
+	select {
+	case sig := <-quit:
+		a.Logger.Info("received shutdown signal", "signal", sig.String())
+	case <-ctx.Done():
+		a.Logger.Info("context canceled")
+	}
 
 	// Graceful shutdown with configurable timeout.
 	if err := a.Server.Shutdown(a.Config.Server.ShutdownTimeoutDuration()); err != nil {
