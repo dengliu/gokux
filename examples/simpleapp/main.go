@@ -10,6 +10,7 @@ import (
 
 	"github.com/dengliu/gokux"
 	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func main() {
@@ -43,9 +44,17 @@ func main() {
 		return nil
 	})
 
+	// Create custom metrics using the OTel Meter.
+	meter := app.Meter("simpleapp")
+	helloCount, _ := meter.Int64Counter(
+		"simpleapp.hello.count",
+		metric.WithDescription("Total hello requests"),
+	)
+
 	// Register application routes using the Echo instance directly.
 	app.Server.Echo.GET("/", func(c echo.Context) error {
 		app.Logger.Info("handling request", "path", c.Path())
+		helloCount.Add(c.Request().Context(), 1)
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "hello"})
 	})

@@ -204,6 +204,34 @@ Metrics are instrumented with [OpenTelemetry](https://opentelemetry.io/) and exp
 
 Health check (`/healthz`, `/readyz`) and metrics (`/metrics`) endpoints are excluded from instrumentation to reduce noise.
 
+### Custom Metrics
+
+Use `app.Meter(name)` to create application-specific instruments that automatically appear on `/metrics`:
+
+```go
+meter := app.Meter("myapp/orders")
+
+orderCount, _ := meter.Int64Counter(
+    "orders.created.count",
+    metric.WithDescription("Total orders created"),
+)
+
+orderDuration, _ := meter.Float64Histogram(
+    "orders.processing.duration",
+    metric.WithUnit("s"),
+    metric.WithDescription("Order processing duration"),
+)
+
+// Use in handlers:
+app.Server.Echo.POST("/orders", func(c echo.Context) error {
+    start := time.Now()
+    // ... process order ...
+    orderCount.Add(c.Request().Context(), 1)
+    orderDuration.Record(c.Request().Context(), time.Since(start).Seconds())
+    return c.JSON(http.StatusCreated, order)
+})
+```
+
 ### Architecture
 
 Each server instance creates a dedicated `prometheus.Registry` (no global state), an OTel `MeterProvider` with a Prometheus exporter, and registers Go runtime + process collectors. This means:

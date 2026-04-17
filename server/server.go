@@ -10,6 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/dengliu/gokux/config"
 )
@@ -89,6 +90,12 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	defer cancel()
 
 	return s.Echo.Shutdown(ctx)
+}
+
+// MeterProvider returns the OTel MeterProvider used by this server.
+// Use it to create custom meters for application-specific instruments.
+func (s *Server) MeterProvider() *sdkmetric.MeterProvider {
+	return s.metrics.provider
 }
 
 // AddLivenessCheck registers a named liveness check.

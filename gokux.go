@@ -26,6 +26,7 @@ import (
 	"github.com/dengliu/gokux/config"
 	"github.com/dengliu/gokux/logging"
 	"github.com/dengliu/gokux/server"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // App is a Kubernetes-ready microservice with built-in health checks,
@@ -91,6 +92,14 @@ func (a *App) Init() error {
 	a.initialized = true
 
 	return nil
+}
+
+// Meter returns an OTel Meter scoped to the given instrumentation name.
+// Use it to create custom counters, histograms, and gauges that
+// automatically appear on the /metrics endpoint.
+// Must be called after Init.
+func (a *App) Meter(name string) metric.Meter {
+	return a.Server.MeterProvider().Meter(name)
 }
 
 // AddLivenessCheck registers a named liveness check on the server.
