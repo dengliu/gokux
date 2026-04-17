@@ -1,0 +1,179 @@
+package server
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/dengliu/gokux/config"
+)
+
+func testConfig() *config.Config {
+	return &config.Config{
+		Server: config.ServerConfig{
+			Port:                   8080,
+			ShutdownTimeoutSeconds: 5,
+			DrainWaitSeconds:       0, // zero drain for fast tests
+		},
+		Log: config.LogConfig{
+			Level: "info",
+		},
+	}
+}
+
+func testLogger() *slog.Logger {
+	return slog.Default()
+}
+
+func TestNewServer(t *testing.T) {
+	cfg := testConfig()
+	logger := testLogger()
+
+	srv := NewServer(cfg, logger)
+
+	assert.NotNil(t, srv.Echo)
+	assert.Equal(t, cfg, srv.Config)
+	assert.Equal(t, logger, srv.Logger)
+	assert.True(t, srv.ready.Load(), "server should start in ready state")
+	assert.NotNil(t, srv.health)
+}
+
+func TestNewServer_BuiltInRoutes(t *testing.T) {
+	cfg := testConfig()
+	srv := NewServer(cfg, testLogger())
+
+	tests := []struct {
+		path       string
+		wantStatus int
+		wantKey    string
+		wantValue  string
+	}{
+		{"/healthz", http.StatusOK, "status", "alive"},
+		{"/readyz", http.StatusOK, "status", "ready"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			rec := httptest.NewRecorder()
+			srv.Echo.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+
+			var body map[string]string
+			err := json.Unmarshal(rec.Body.Bytes(), &body)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantValue, body[tt.wantKey])
+		})
+	}
+}
+
+func TestNewServer_MetricsRoute(t *testing.T) {
+	cfg := testConfig()
+	srv := NewServer(cfg, testLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	srv.Echo.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "go_goroutines")
+}
+
+func TestServer_StartAndShutdown(t *testing.T) {
+	cfg := testConfig()
+	cfg.Server.Port = 0 // let OS pick a free port
+	srv := NewServer(cfg, testLogger())
+
+	// Start in background.
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Start()
+	}()
+
+	// Give the server a moment to start.
+	time.Sleep(100 * time.Millisecond)
+
+	// Shutdown should succeed.
+	err := srv.Shutdown(5 * time.Second)
+	require.NoError(t, err)
+	assert.False(t, srv.ready.Load(), "ready should be false after shutdown")
+}
+
+func TestServer_AddLivenessCheck(t *testing.T) {
+	cfg := testConfig()
+	srv := NewServer(cfg, testLogger())
+
+	called := false
+	srv.AddLivenessCheck("test", func() error {
+		called = true
+
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	srv.Echo.ServeHTTP(rec, req)
+
+	assert.True(t, called, "liveness check should have been called")
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestServer_AddReadinessCheck(t *testing.T) {
+	cfg := testConfig()
+	srv := NewServer(cfg, testLogger())
+
+	called := false
+	srv.AddReadinessCheck("test", func() error {
+		called = true
+
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.Echo.ServeHTTP(rec, req)
+
+	assert.True(t, called, "readiness check should have been called")
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestSlogMiddleware_SkipsHealthEndpoints(t *testing.T) {
+	logger := testLogger()
+	mw := SlogMiddleware(logger)
+
+	e := newTestEcho()
+	e.Use(mw)
+	e.GET("/healthz", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})
+	e.GET("/readyz", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})
+	e.GET("/metrics", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})
+
+	// These should not cause any logging errors.
+	for _, path := range []string{"/healthz", "/readyz", "/metrics"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code, "path: %s", path)
+	}
+}
+
+func newTestEcho() *echo.Echo {
+	e := echo.New()
+	e.HideBanner = true
+	e.HidePort = true
+
+	return e
+}
