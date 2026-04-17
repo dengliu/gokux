@@ -1,16 +1,12 @@
-.PHONY: test lint vet clean
+.PHONY: test lint clean
 
 # Run library tests
 test:
 	go test -v -race -coverprofile=coverage.out ./...
 
-# Lint with golangci-lint
+# Lint with golangci-lint (includes go vet)
 lint:
 	golangci-lint run ./...
-
-# Vet
-vet:
-	go vet ./...
 
 # Remove build artifacts
 clean:
