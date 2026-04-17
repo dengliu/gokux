@@ -83,7 +83,11 @@ func (a *App) Init() error {
 		a.Logger = logger
 	}
 
-	a.Server = server.NewServer(cfg, a.Logger)
+	srv, err := server.NewServer(cfg, a.Logger)
+	if err != nil {
+		return fmt.Errorf("create server: %w", err)
+	}
+	a.Server = srv
 	a.initialized = true
 
 	return nil

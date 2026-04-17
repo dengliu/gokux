@@ -16,17 +16,24 @@ import (
 
 // Server wraps an Echo instance with application dependencies.
 type Server struct {
-	Echo   *echo.Echo
-	Config *config.Config
-	Logger *slog.Logger
-	ready  *atomic.Bool
-	health *healthHandler
+	Echo    *echo.Echo
+	Config  *config.Config
+	Logger  *slog.Logger
+	ready   *atomic.Bool
+	health  *healthHandler
+	metrics *metricsProvider
 }
 
 // NewServer creates a configured Echo server with all routes and middleware.
-func NewServer(cfg *config.Config, logger *slog.Logger) *Server {
+// Returns an error if the OTel metrics provider fails to initialize.
+func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	ready := &atomic.Bool{}
 	ready.Store(true)
+
+	mp, err := newMetricsProvider()
+	if err != nil {
+		return nil, fmt.Errorf("create metrics provider: %w", err)
+	}
 
 	e := echo.New()
 	e.HideBanner = true
@@ -35,7 +42,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger) *Server {
 	// Middleware
 	e.Use(middleware.Recover())
 	e.Use(SlogMiddleware(logger))
-	e.Use(MetricsMiddleware())
+	e.Use(metricsMiddleware(mp))
 
 	// Health check routes
 	health := newHealthHandler(ready)
@@ -43,15 +50,16 @@ func NewServer(cfg *config.Config, logger *slog.Logger) *Server {
 	e.GET("/readyz", health.Readyz)
 
 	// Metrics route
-	e.GET("/metrics", MetricsHandler())
+	e.GET("/metrics", metricsHandler(mp))
 
 	return &Server{
-		Echo:   e,
-		Config: cfg,
-		Logger: logger,
-		ready:  ready,
-		health: health,
-	}
+		Echo:    e,
+		Config:  cfg,
+		Logger:  logger,
+		ready:   ready,
+		health:  health,
+		metrics: mp,
+	}, nil
 }
 
 // Start begins listening on the configured port. This call blocks.

@@ -36,18 +36,21 @@ func TestNewServer(t *testing.T) {
 	cfg := testConfig()
 	logger := testLogger()
 
-	srv := NewServer(cfg, logger)
+	srv, err := NewServer(cfg, logger)
+	require.NoError(t, err)
 
 	assert.NotNil(t, srv.Echo)
 	assert.Equal(t, cfg, srv.Config)
 	assert.Equal(t, logger, srv.Logger)
 	assert.True(t, srv.ready.Load(), "server should start in ready state")
 	assert.NotNil(t, srv.health)
+	assert.NotNil(t, srv.metrics)
 }
 
 func TestNewServer_BuiltInRoutes(t *testing.T) {
 	cfg := testConfig()
-	srv := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger())
+	require.NoError(t, err)
 
 	tests := []struct {
 		path       string
@@ -77,7 +80,8 @@ func TestNewServer_BuiltInRoutes(t *testing.T) {
 
 func TestNewServer_MetricsRoute(t *testing.T) {
 	cfg := testConfig()
-	srv := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger())
+	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()
@@ -90,7 +94,8 @@ func TestNewServer_MetricsRoute(t *testing.T) {
 func TestServer_StartAndShutdown(t *testing.T) {
 	cfg := testConfig()
 	cfg.Server.Port = 0 // let OS pick a free port
-	srv := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger())
+	require.NoError(t, err)
 
 	// Start in background.
 	errCh := make(chan error, 1)
@@ -102,14 +107,15 @@ func TestServer_StartAndShutdown(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Shutdown should succeed.
-	err := srv.Shutdown(5 * time.Second)
+	err = srv.Shutdown(5 * time.Second)
 	require.NoError(t, err)
 	assert.False(t, srv.ready.Load(), "ready should be false after shutdown")
 }
 
 func TestServer_AddLivenessCheck(t *testing.T) {
 	cfg := testConfig()
-	srv := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger())
+	require.NoError(t, err)
 
 	called := false
 	srv.AddLivenessCheck("test", func() error {
@@ -128,7 +134,8 @@ func TestServer_AddLivenessCheck(t *testing.T) {
 
 func TestServer_AddReadinessCheck(t *testing.T) {
 	cfg := testConfig()
-	srv := NewServer(cfg, testLogger())
+	srv, err := NewServer(cfg, testLogger())
+	require.NoError(t, err)
 
 	called := false
 	srv.AddReadinessCheck("test", func() error {
