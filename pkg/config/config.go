@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/nil-go/konf"
 	"github.com/nil-go/konf/provider/env"
@@ -19,7 +20,19 @@ type Config struct {
 
 // ServerConfig holds the HTTP server configuration.
 type ServerConfig struct {
-	Port int
+	Port                   int
+	ShutdownTimeoutSeconds int `yaml:"shutdown_timeout_seconds"` // hard deadline for in-flight requests during shutdown
+	DrainWaitSeconds       int `yaml:"drain_wait_seconds"`       // pause after marking not-ready, before closing listeners
+}
+
+// ShutdownTimeoutDuration returns ShutdownTimeoutSeconds as a time.Duration.
+func (s ServerConfig) ShutdownTimeoutDuration() time.Duration {
+	return time.Duration(s.ShutdownTimeoutSeconds) * time.Second
+}
+
+// DrainWaitDuration returns DrainWaitSeconds as a time.Duration.
+func (s ServerConfig) DrainWaitDuration() time.Duration {
+	return time.Duration(s.DrainWaitSeconds) * time.Second
 }
 
 // LogConfig holds the logging configuration.
@@ -54,7 +67,9 @@ func Load(files ...string) (*Config, error) {
 	// Start with built-in defaults.
 	cfg := &Config{
 		Server: ServerConfig{
-			Port: 8080,
+			Port:                   8080,
+			ShutdownTimeoutSeconds: 10,
+			DrainWaitSeconds:       3,
 		},
 		Log: LogConfig{
 			Level: "info",

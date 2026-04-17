@@ -70,8 +70,9 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	s.ready.Store(false)
 
 	// Allow time for load balancers to detect the readiness change.
-	s.Logger.Info("waiting for in-flight requests to drain", "drain", 3*time.Second)
-	time.Sleep(3 * time.Second)
+	drainWait := s.Config.Server.DrainWaitDuration()
+	s.Logger.Info("waiting for in-flight requests to drain", "drain", drainWait)
+	time.Sleep(drainWait)
 
 	// Create a context with a timeout for the shutdown.
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

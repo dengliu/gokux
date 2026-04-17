@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	slogzap "github.com/samber/slog-zap/v2"
 	"go.uber.org/zap"
@@ -55,8 +54,8 @@ func main() {
 	sig := <-quit
 	logger.Info("received shutdown signal", "signal", sig.String())
 
-	// Graceful shutdown with a 10-second timeout.
-	if err := srv.Shutdown(10 * time.Second); err != nil {
+	// Graceful shutdown with configurable timeout.
+	if err := srv.Shutdown(cfg.Server.ShutdownTimeoutDuration()); err != nil {
 		logger.Error("server shutdown error", "error", err.Error())
 		os.Exit(1)
 	}

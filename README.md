@@ -10,7 +10,7 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 - **Prometheus metrics** — HTTP request duration, request count, and Go runtime metrics at `/metrics`
 - **12-factor config** — Environment-based configuration via [konf](https://github.com/nil-go/konf)
 - **Structured logging** — `log/slog` interface with [zap](https://github.com/uber-go/zap) backend via [slog-zap](https://github.com/samber/slog-zap)
-- **Graceful shutdown** — Clean shutdown on `SIGINT`/`SIGTERM` with request draining
+- **Graceful shutdown** — Clean shutdown on `SIGINT`/`SIGTERM` with configurable drain wait and shutdown timeout
 - **Multi-arch images** — `linux/amd64` and `linux/arm64` via Docker buildx and GitHub Actions
 
 ## API
@@ -68,6 +68,8 @@ Example `config.yaml`:
 ```yaml
 server:
   port: 8080
+  shutdown_timeout_seconds: 10  # hard deadline for in-flight requests during shutdown
+  drain_wait_seconds: 3         # pause after marking not-ready, before closing listeners
 
 log:
   level: info
@@ -77,10 +79,12 @@ log:
 
 All configuration can also be set via environment variables with the `GOKUX_` prefix:
 
-| Variable             | Default  | Description           |
-|----------------------|----------|-----------------------|
-| `GOKUX_SERVER_PORT`  | `8080`   | HTTP server port      |
-| `GOKUX_LOG_LEVEL`    | `info`   | Log level (debug, info, warn, error) |
+| Variable                       | Default  | Description           |
+|--------------------------------|----------|-----------------------|
+| `GOKUX_SERVER_PORT`            | `8080`   | HTTP server port      |
+| `GOKUX_SERVER_SHUTDOWN_TIMEOUT_SECONDS`| `10`     | Hard deadline in seconds for in-flight requests during shutdown |
+| `GOKUX_SERVER_DRAIN_WAIT_SECONDS`      | `3`      | Pause in seconds before closing listeners |
+| `GOKUX_LOG_LEVEL`              | `info`   | Log level (debug, info, warn, error) |
 
 ## Docker
 
@@ -91,6 +95,51 @@ make docker-build
 # Build and push
 make docker-push
 ```
+
+## Graceful Shutdown
+
+When gokux receives `SIGINT` or `SIGTERM`, it performs a two-phase graceful shutdown:
+
+```
+SIGTERM received
+    │
+    ▼
+1. ready.Store(false)          ← readiness probe starts failing
+    │
+    ▼
+2. time.Sleep(drain_wait)      ← "drain_wait_seconds" (default 3)
+    │                            Purpose: give the load balancer / kube-proxy
+    │                            time to notice the failed readiness probe and
+    │                            stop routing NEW requests to this pod.
+    │                            During this window the server is still running
+    │                            and finishing in-flight requests.
+    │
+    ▼
+3. echo.Shutdown(ctx)          ← "shutdown_timeout_seconds" (default 10)
+    │                            Purpose: hard deadline for Echo to finish
+    │                            processing any remaining in-flight HTTP
+    │                            requests. If they don't complete within this
+    │                            window, Shutdown returns an error and the
+    │                            connections are forcibly closed.
+    │
+    ▼
+4. Process exits
+```
+
+### `drain_wait_seconds` vs `shutdown_timeout_seconds`
+
+| | `drain_wait_seconds` | `shutdown_timeout_seconds` |
+|---|---|---|
+| **What it controls** | Time to let LB/kube-proxy stop sending new traffic | Time to let in-flight requests finish |
+| **Server accepting requests?** | Yes | No (new connections refused) |
+| **Default value** | 3s | 10s |
+| **Depends on** | LB health check interval, readiness probe period | Longest expected request duration |
+
+### Relationship with Kubernetes `terminationGracePeriodSeconds`
+
+The Kubernetes `terminationGracePeriodSeconds` (default 30s) is the outer envelope — it **must** be greater than or equal to `drain_wait_seconds + shutdown_timeout_seconds`. Otherwise the kubelet will `SIGKILL` the process before graceful shutdown completes.
+
+For example, with the defaults (`drain_wait_seconds=3`, `shutdown_timeout_seconds=10`), the total graceful shutdown takes at most 13 seconds, which fits comfortably within the default 30-second `terminationGracePeriodSeconds`.
 
 ## Kubernetes
 
