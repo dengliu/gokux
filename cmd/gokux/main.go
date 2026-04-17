@@ -3,17 +3,13 @@ package main
 
 import (
 	"flag"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
-	slogzap "github.com/samber/slog-zap/v2"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
 	"github.com/dengliu/gokux/pkg/api"
 	"github.com/dengliu/gokux/pkg/config"
+	"github.com/dengliu/gokux/pkg/logging"
 )
 
 func main() {
@@ -33,7 +29,7 @@ func main() {
 	}
 
 	// Initialize structured logger: zap backend with slog interface.
-	logger, err := newLogger(cfg.Log.Level)
+	logger, err := logging.NewLogger(cfg.Log.Level)
 	if err != nil {
 		panic("failed to create logger: " + err.Error())
 	}
@@ -61,59 +57,4 @@ func main() {
 	}
 
 	logger.Info("server stopped gracefully")
-}
-
-// newLogger creates a *slog.Logger backed by zap via slog-zap.
-func newLogger(level string) (*slog.Logger, error) {
-	lvl := zap.InfoLevel
-	if err := lvl.UnmarshalText([]byte(level)); err != nil {
-		return nil, err
-	}
-
-	zapCfg := zap.Config{
-		Level:       zap.NewAtomicLevelAt(lvl),
-		Development: false,
-		Encoding:    "json",
-		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:        "ts",
-			LevelKey:       "level",
-			NameKey:        "logger",
-			CallerKey:      "caller",
-			MessageKey:     "msg",
-			StacktraceKey:  "stacktrace",
-			LineEnding:     zapcore.DefaultLineEnding,
-			EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.SecondsDurationEncoder,
-			EncodeCaller:   zapcore.ShortCallerEncoder,
-		},
-		OutputPaths:      []string{"stdout"},
-		ErrorOutputPaths: []string{"stderr"},
-	}
-
-	zapLogger, err := zapCfg.Build()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = zapLogger.Sync() }()
-
-	// Map zap level to slog level.
-	slogLevel := slog.LevelInfo
-	switch lvl {
-	case zap.DebugLevel:
-		slogLevel = slog.LevelDebug
-	case zap.InfoLevel:
-		slogLevel = slog.LevelInfo
-	case zap.WarnLevel:
-		slogLevel = slog.LevelWarn
-	case zap.ErrorLevel:
-		slogLevel = slog.LevelError
-	}
-
-	logger := slog.New(slogzap.Option{
-		Level:  slogLevel,
-		Logger: zapLogger,
-	}.NewZapHandler())
-
-	return logger, nil
 }

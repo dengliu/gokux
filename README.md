@@ -178,8 +178,10 @@ gokux/
 │   │   ├── server.go        # Echo server, routing, middleware
 │   │   ├── health.go        # /healthz and /readyz handlers
 │   │   └── metrics.go       # Prometheus middleware and /metrics handler
-│   └── config/
-│       └── config.go        # konf-based 12-factor configuration
+│   ├── config/
+│   │   └── config.go        # konf-based 12-factor configuration
+│   └── logging/
+│       └── logging.go       # Structured logger (zap + slog-zap)
 ├── .github/workflows/
 │   └── release.yml          # Multi-arch Docker build with GitHub Actions
 ├── Dockerfile               # Multi-stage build (Go builder → distroless)
