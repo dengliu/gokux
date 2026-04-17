@@ -3,72 +3,54 @@ package config
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEnvVarOverride(t *testing.T) {
 	// Set env var with GOKUX_ prefix
-	os.Setenv("GOKUX_SERVER_PORT", "9090")
-	defer os.Unsetenv("GOKUX_SERVER_PORT")
+	t.Setenv("GOKUX_SERVER_PORT", "9090")
 
 	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	if cfg.Server.Port != 9090 {
-		t.Errorf("expected Port=9090, got Port=%d (env var override did NOT work)", cfg.Server.Port)
-	} else {
-		t.Logf("Port=%d (env var override works correctly)", cfg.Server.Port)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 9090, cfg.Server.Port, "env var GOKUX_SERVER_PORT should override default port")
 }
 
 func TestEnvVarDrainWaitSeconds(t *testing.T) {
 	// Env var names concatenate words without underscores because "_"
 	// is the hierarchy delimiter (SERVER vs field name).
-	os.Setenv("GOKUX_SERVER_DRAINWAITSECONDS", "7")
-	defer os.Unsetenv("GOKUX_SERVER_DRAINWAITSECONDS")
+	t.Setenv("GOKUX_SERVER_DRAINWAITSECONDS", "7")
 
 	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	if cfg.Server.DrainWaitSeconds != 7 {
-		t.Errorf("expected DrainWaitSeconds=7, got DrainWaitSeconds=%d (env var override did NOT work)", cfg.Server.DrainWaitSeconds)
-	} else {
-		t.Logf("DrainWaitSeconds=%d (env var override works correctly)", cfg.Server.DrainWaitSeconds)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 7, cfg.Server.DrainWaitSeconds, "env var GOKUX_SERVER_DRAINWAITSECONDS should override default")
 }
 
 func TestEnvVarShutdownTimeoutSeconds(t *testing.T) {
-	os.Setenv("GOKUX_SERVER_SHUTDOWNTIMEOUTSECONDS", "20")
-	defer os.Unsetenv("GOKUX_SERVER_SHUTDOWNTIMEOUTSECONDS")
+	t.Setenv("GOKUX_SERVER_SHUTDOWNTIMEOUTSECONDS", "20")
 
 	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	if cfg.Server.ShutdownTimeoutSeconds != 20 {
-		t.Errorf("expected ShutdownTimeoutSeconds=20, got ShutdownTimeoutSeconds=%d (env var override did NOT work)", cfg.Server.ShutdownTimeoutSeconds)
-	} else {
-		t.Logf("ShutdownTimeoutSeconds=%d (env var override works correctly)", cfg.Server.ShutdownTimeoutSeconds)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 20, cfg.Server.ShutdownTimeoutSeconds, "env var GOKUX_SERVER_SHUTDOWNTIMEOUTSECONDS should override default")
 }
 
 func TestEnvVarCaseInsensitive(t *testing.T) {
-	// Test with lowercase env var
+	// Lowercase prefix does not match — the GOKUX_ prefix filter is case-sensitive.
 	os.Setenv("gokux_server_port", "7070")
 	defer os.Unsetenv("gokux_server_port")
 
 	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 8080, cfg.Server.Port, "lowercase env var prefix should NOT override (case-sensitive)")
+}
 
-	if cfg.Server.Port == 7070 {
-		t.Logf("Port=%d (lowercase env var works)", cfg.Server.Port)
-	} else {
-		t.Logf("Port=%d (lowercase env var does NOT work — case-sensitive)", cfg.Server.Port)
-	}
+func TestDefaults(t *testing.T) {
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	assert.Equal(t, 8080, cfg.Server.Port)
+	assert.Equal(t, 10, cfg.Server.ShutdownTimeoutSeconds)
+	assert.Equal(t, 3, cfg.Server.DrainWaitSeconds)
+	assert.Equal(t, "info", cfg.Log.Level)
 }

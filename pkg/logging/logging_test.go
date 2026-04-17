@@ -2,6 +2,9 @@ package logging
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewLogger_ValidLevels(t *testing.T) {
@@ -10,32 +13,22 @@ func TestNewLogger_ValidLevels(t *testing.T) {
 	for _, level := range levels {
 		t.Run(level, func(t *testing.T) {
 			logger, err := NewLogger(level)
-			if err != nil {
-				t.Fatalf("NewLogger(%q) returned error: %v", level, err)
-			}
-			if logger == nil {
-				t.Fatalf("NewLogger(%q) returned nil logger", level)
-			}
+			require.NoError(t, err)
+			assert.NotNil(t, logger)
 		})
 	}
 }
 
 func TestNewLogger_InvalidLevel(t *testing.T) {
 	_, err := NewLogger("invalid")
-	if err == nil {
-		t.Fatal("NewLogger(\"invalid\") should return an error")
-	}
+	assert.Error(t, err)
 }
 
 func TestNewLogger_EmptyLevel(t *testing.T) {
 	// zap treats empty string as info level (its zero value).
 	logger, err := NewLogger("")
-	if err != nil {
-		t.Fatalf("NewLogger(\"\") returned error: %v", err)
-	}
-	if logger == nil {
-		t.Fatal("NewLogger(\"\") returned nil logger")
-	}
+	require.NoError(t, err)
+	assert.NotNil(t, logger)
 }
 
 func TestNewLogger_CaseInsensitiveLevel(t *testing.T) {
@@ -45,12 +38,8 @@ func TestNewLogger_CaseInsensitiveLevel(t *testing.T) {
 	for _, level := range levels {
 		t.Run(level, func(t *testing.T) {
 			logger, err := NewLogger(level)
-			if err != nil {
-				t.Fatalf("NewLogger(%q) returned error: %v", level, err)
-			}
-			if logger == nil {
-				t.Fatalf("NewLogger(%q) returned nil logger", level)
-			}
+			require.NoError(t, err)
+			assert.NotNil(t, logger)
 		})
 	}
 }
