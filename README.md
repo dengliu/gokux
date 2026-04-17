@@ -92,6 +92,12 @@ Response example when a check fails (`/readyz`):
 {"status": "not ready", "database": "connection refused", "cache": "ok"}
 ```
 
+**Default behavior (no custom checks registered):**
+- `/healthz` always returns `200 {"status": "alive"}` — if the process is running and responding to HTTP, it's alive
+- `/readyz` returns `200 {"status": "ready"}` during normal operation, and `503 {"status": "not ready", "drain": "shutting down"}` during graceful shutdown
+- The built-in drain detection works regardless of custom checks
+- Custom checks are **additive** — they add more conditions that must pass, but the baseline behavior works out of the box
+
 ### Available Options
 
 | Option | Description |

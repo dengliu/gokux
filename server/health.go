@@ -49,6 +49,7 @@ func (h *healthHandler) AddReadinessCheck(name string, check HealthCheck) {
 
 // Healthz is the Kubernetes liveness probe handler.
 // GET /healthz — returns 200 when the process is alive and all liveness checks pass.
+// With no registered liveness checks, it always returns 200 {"status": "alive"}.
 func (h *healthHandler) Healthz(c echo.Context) error {
 	h.mu.RLock()
 	checks := make(map[string]HealthCheck, len(h.livenessChecks))
@@ -83,6 +84,9 @@ func (h *healthHandler) Healthz(c echo.Context) error {
 // Readyz is the Kubernetes readiness probe handler.
 // GET /readyz — returns 200 when the service is ready to accept traffic,
 // or 503 during shutdown draining or when any readiness check fails.
+// With no registered readiness checks, the built-in drain detection still
+// works: returns 200 during normal operation, 503 during graceful shutdown.
+// Custom checks are additive — they add more conditions that must pass.
 func (h *healthHandler) Readyz(c echo.Context) error {
 	h.mu.RLock()
 	checks := make(map[string]HealthCheck, len(h.readinessChecks))
