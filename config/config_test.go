@@ -61,7 +61,7 @@ func TestCustomEnvPrefix(t *testing.T) {
 }
 
 func TestWithFiles(t *testing.T) {
-	cfg, err := Load(WithFiles("../../config.yaml"))
+	cfg, err := Load(WithFiles("../config.yaml"))
 	require.NoError(t, err)
 	assert.Equal(t, 8080, cfg.Server.Port)
 }

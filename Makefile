@@ -2,7 +2,7 @@
 
 # Variables
 APP_NAME    := gokux
-CMD_PATH    := ./cmd/gokux
+CMD_PATH    := ./examples/simpleapp
 BUILD_DIR   := bin
 IMAGE       := ghcr.io/dengliu/gokux
 TAG         ?= latest

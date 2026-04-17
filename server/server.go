@@ -1,5 +1,5 @@
-// Package api provides the HTTP server, routing, and middleware for the gokux service.
-package api
+// Package server provides the HTTP server, routing, and middleware for the gokux service.
+package server
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/dengliu/gokux/pkg/config"
+	"github.com/dengliu/gokux/config"
 )
 
 // Server wraps an Echo instance with application dependencies.

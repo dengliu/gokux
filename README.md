@@ -75,14 +75,11 @@ func main() {
 # Build and run locally
 make run
 
-# Or run directly with Go
-go run ./cmd/gokux
-
-# With config file
-go run ./cmd/gokux -f config.yaml
+# Or run the example directly with Go
+go run ./examples/simpleapp -f config.yaml
 
 # Cascading config files (later overrides earlier)
-go run ./cmd/gokux -f config.yaml -f config-dev.yaml
+go run ./examples/simpleapp -f config.yaml -f config-dev.yaml
 ```
 
 The server starts on port `8080` by default.
@@ -221,17 +218,17 @@ readinessProbe:
 gokux/
 ├── gokux.go                 # App struct, New(), Run() — reusable entrypoint
 ├── option.go                # Functional options (WithConfigFiles, WithRoutes, etc.)
-├── cmd/gokux/
-│   └── main.go              # Reference CLI using gokux.New()
-├── pkg/
-│   ├── api/
-│   │   ├── server.go        # Echo server, routing, middleware
-│   │   ├── health.go        # /healthz and /readyz handlers
-│   │   └── metrics.go       # Prometheus middleware and /metrics handler
-│   ├── config/
-│   │   └── config.go        # konf-based 12-factor configuration
-│   └── logging/
-│       └── logging.go       # Structured logger (zap + slog-zap)
+├── server/                  # Echo server, health checks, metrics
+│   ├── server.go
+│   ├── health.go
+│   └── metrics.go
+├── config/                  # konf-based 12-factor configuration
+│   └── config.go
+├── logging/                 # Structured logger (zap + slog-zap)
+│   └── logging.go
+├── examples/
+│   └── simpleapp/
+│       └── main.go          # Reference example using gokux.New()
 ├── .github/workflows/
 │   └── release.yml          # Multi-arch Docker build with GitHub Actions
 ├── Dockerfile               # Multi-stage build (Go builder → distroless)

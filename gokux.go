@@ -22,9 +22,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/dengliu/gokux/pkg/api"
-	"github.com/dengliu/gokux/pkg/config"
-	"github.com/dengliu/gokux/pkg/logging"
+	"github.com/dengliu/gokux/config"
+	"github.com/dengliu/gokux/logging"
+	"github.com/dengliu/gokux/server"
 )
 
 // App is a Kubernetes-ready microservice with built-in health checks,
@@ -33,7 +33,7 @@ type App struct {
 	opts   options
 	Config *config.Config
 	Logger *slog.Logger
-	Server *api.Server
+	Server *server.Server
 }
 
 // New creates a new App with the given Option(s).
@@ -111,7 +111,7 @@ func (a *App) init() error {
 		a.Logger = logger
 	}
 
-	a.Server = api.NewServer(cfg, a.Logger)
+	a.Server = server.NewServer(cfg, a.Logger)
 
 	return nil
 }
