@@ -1,6 +1,6 @@
-// Package gokux provides a reusable framework for building Kubernetes-ready
-// Go microservices with built-in health checks, Prometheus metrics,
-// structured logging, and graceful shutdown.
+// Package gokux provides a Go library for building Kubernetes-ready services
+// with built-in health checks, Prometheus metrics, structured logging,
+// distributed tracing, background tasks, and graceful shutdown.
 //
 // Usage:
 //
@@ -36,9 +36,9 @@ import (
 // Return nil if healthy, or an error describing the problem.
 type HealthCheck = server.HealthCheck
 
-// App is a Kubernetes-ready microservice with built-in health checks,
-// metrics, structured logging, graceful shutdown, and background task
-// management.
+// App is the top-level container provided by the gokux library.
+// It wires together config, logging, HTTP server, and background tasks
+// into a Kubernetes-ready application.
 type App struct {
 	opts        options
 	initialized bool

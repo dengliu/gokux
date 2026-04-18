@@ -1,6 +1,6 @@
 # gokux
 
-A lightweight Go microservice showcasing best practices for running in Kubernetes.
+A lightweight Go library for building Kubernetes-ready services with built-in health checks, metrics, tracing, structured logging, background tasks, and graceful shutdown.
 
 Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 

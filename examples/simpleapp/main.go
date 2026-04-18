@@ -1,4 +1,4 @@
-// Package main demonstrates how to use the gokux framework to build a
+// Package main demonstrates how to use the gokux library to build a
 // Kubernetes-ready service with minimal boilerplate.
 package main
 
@@ -106,6 +106,7 @@ func main() {
 			app.Logger.Info("background worker cleaning up")
 			return nil
 		},
+		RestartOnFailure: true,
 	})
 
 	// Register a global shutdown callback for cross-cutting cleanup.
