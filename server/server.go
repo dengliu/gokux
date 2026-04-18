@@ -11,6 +11,7 @@ import (
 	"github.com/dengliu/gokux/config"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	slogecho "github.com/samber/slog-echo"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -52,7 +53,17 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 	if traceExporter != nil {
 		e.Use(otelecho.Middleware("gokux"))
 	}
-	e.Use(slogMiddleware(logger))
+	e.Use(slogecho.NewWithConfig(logger, slogecho.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelWarn,
+		ServerErrorLevel: slog.LevelError,
+		WithUserAgent:    true,
+		WithTraceID:      traceExporter != nil,
+		WithSpanID:       traceExporter != nil,
+		Filters: []slogecho.Filter{
+			slogecho.IgnorePath("/healthz", "/readyz", "/metrics"),
+		},
+	}))
 	e.Use(metricsMiddleware(mp))
 
 	// Health check routes
@@ -134,37 +145,3 @@ func (s *Server) AddReadinessCheck(name string, check HealthCheck) {
 	s.health.AddReadinessCheck(name, check)
 }
 
-// slogMiddleware returns an Echo middleware that logs each request using slog.
-func slogMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			start := time.Now()
-
-			err := next(c)
-			if err != nil {
-				c.Error(err)
-			}
-
-			req := c.Request()
-			res := c.Response()
-			latency := time.Since(start)
-
-			// Skip logging for health check and metrics endpoints to reduce noise.
-			path := req.URL.Path
-			if path == "/healthz" || path == "/readyz" || path == "/metrics" {
-				return nil
-			}
-
-			logger.Info("request",
-				"method", req.Method,
-				"path", path,
-				"status", res.Status,
-				"latency", latency,
-				"remote_ip", c.RealIP(),
-				"user_agent", req.UserAgent(),
-			)
-
-			return nil
-		}
-	}
-}

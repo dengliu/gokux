@@ -7,6 +7,7 @@ require (
 	github.com/nil-go/konf v1.4.0
 	github.com/nil-go/konf/provider/file v1.4.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/samber/slog-echo v1.21.0
 	github.com/samber/slog-zap/v2 v2.6.4
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.68.0
