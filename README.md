@@ -11,6 +11,7 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 - **12-factor config** — Environment-based configuration via [konf](https://github.com/nil-go/konf)
 - **Structured logging** — `log/slog` interface with [zap](https://github.com/uber-go/zap) backend via [slog-zap](https://github.com/samber/slog-zap)
 - **Distributed tracing** — OTel tracing with automatic HTTP spans and W3C context propagation
+- **Background tasks** — Managed long-running goroutines with context-based shutdown and cleanup callbacks via `TaskRunner`
 - **Graceful shutdown** — Clean shutdown on `SIGINT`/`SIGTERM` with configurable drain wait and shutdown timeout
 - **Multi-arch images** — `linux/amd64` and `linux/arm64` via Docker buildx and GitHub Actions
 
@@ -60,14 +61,14 @@ func main() {
 }
 ```
 
-### Lifecycle: New → Init → (register routes) → Run
+### Lifecycle: New → Init → (register routes & tasks) → Run
 
 1. **`gokux.New(opts...)`** — creates an App with configuration options
-2. **`app.Init()`** — loads config, creates logger, builds the HTTP server. After this, `app.Config`, `app.Logger`, and `app.Server` are available.
-3. **Register routes/middleware** — use `app.Server.Echo` directly (supports global, per-group, and per-route middleware)
-4. **`app.Run()`** — starts the server, blocks until shutdown signal, performs graceful shutdown
+2. **`app.Init()`** — loads config, creates logger, builds the HTTP server and task runner. After this, `app.Config`, `app.Logger`, `app.Server`, and `app.TaskRunner` are available.
+3. **Register routes/middleware/tasks** — use `app.Server.Echo` for routes, `app.TaskRunner` for background tasks
+4. **`app.Run(ctx)`** — starts background tasks, starts the server, blocks until shutdown signal, performs graceful shutdown (tasks first, then server)
 
-> **Note:** If you skip `Init()`, `Run()` calls it automatically. The explicit `Init()` is only needed when you want to access `app.Logger`, register routes, or add health checks before starting.
+> **Note:** If you skip `Init()`, `Run()` calls it automatically. The explicit `Init()` is only needed when you want to access `app.Logger`, register routes, add health checks, or register tasks before starting.
 
 ### Custom Health Checks
 
@@ -99,6 +100,81 @@ Response example when a check fails (`/readyz`):
 - The built-in drain detection works regardless of custom checks
 - Custom checks are **additive** — they add more conditions that must pass, but the baseline behavior works out of the box
 
+### Background Tasks
+
+Use `app.TaskRunner` to run long-running goroutines that are tied to the application lifecycle. Each task receives a context that is cancelled on shutdown.
+
+```go
+import "github.com/dengliu/gokux/job"
+
+// Always-running task with per-task cleanup.
+// Run receives a context that is cancelled on shutdown.
+// Shutdown receives a FRESH context (not cancelled) with the remaining
+// shutdown timeout, so context-aware cleanup like closing connections works.
+app.TaskRunner.Add(job.Task{
+    Name: "pg-to-redis",
+    Run: func(ctx context.Context) error {
+        for {
+            notification, err := pgConn.WaitForNotification(ctx)
+            if ctx.Err() != nil {
+                return nil // graceful shutdown
+            }
+            if err != nil {
+                return err
+            }
+            redisClient.Publish(ctx, notification.Channel, notification.Payload)
+        }
+    },
+    Shutdown: func(ctx context.Context) error {
+        return pgConn.Close(ctx) // ctx is still valid here
+    },
+})
+
+// Global shutdown callbacks for cross-cutting concerns (run in LIFO order,
+// after all per-task Shutdown callbacks).
+app.TaskRunner.OnShutdown("flush-metrics", func(ctx context.Context) error {
+    return flushMetrics(ctx)
+})
+```
+
+#### Bringing your own scheduler
+
+The TaskRunner intentionally does **not** include cron or interval scheduling — use a dedicated library like [gocron](https://github.com/go-co-op/gocron) and register its scheduler as a task:
+
+```go
+import "github.com/go-co-op/gocron/v2"
+
+cronScheduler, _ := gocron.NewScheduler()
+cronScheduler.NewJob(gocron.CronJob("0 * * * *", false),
+    gocron.NewTask(func() { refreshCache() }))
+
+app.TaskRunner.Add(job.Task{
+    Name: "cron-scheduler",
+    Run: func(ctx context.Context) error {
+        cronScheduler.Start()
+        <-ctx.Done()
+        return cronScheduler.Shutdown()
+    },
+})
+```
+
+#### Task struct
+
+| Field | Type | Description |
+|---|---|---|
+| `Name` | `string` | Human-readable identifier for logs |
+| `Run` | `func(ctx) error` | The work function; ctx is cancelled on shutdown |
+| `Shutdown` | `func(ctx) error` | Optional cleanup; receives a fresh (not cancelled) context with the shutdown deadline |
+
+#### TaskRunner API
+
+| Method | Description |
+|---|---|
+| `Add(task)` | Register a long-running task (call before `Run`) |
+| `OnShutdown(name, fn)` | Register a global cleanup callback (LIFO, runs after per-task Shutdown) |
+| `Start(ctx)` | Launch all tasks (called automatically by `app.Run`) |
+| `Shutdown(timeout)` | Cancel context → wait for Run to return → per-task Shutdown → global OnShutdown |
+
 ### Available Options
 
 | Option | Description |
@@ -116,6 +192,7 @@ Response example when a check fails (`/readyz`):
 - Structured logging (zap + slog)
 - Graceful shutdown with configurable drain wait and timeout
 - Signal handling (SIGINT/SIGTERM)
+- Background task runner with shutdown callbacks
 
 ## Quick Start
 
@@ -313,16 +390,20 @@ make docker-push
 
 ## Graceful Shutdown
 
-When gokux receives `SIGINT` or `SIGTERM`, it performs a two-phase graceful shutdown:
+When gokux receives `SIGINT` or `SIGTERM`, it performs a graceful shutdown:
 
 ```
 SIGTERM received
     │
     ▼
-1. ready.Store(false)          ← readiness probe starts failing
+1. TaskRunner.Shutdown()       ← cancel task contexts, run OnShutdown
+    │                            callbacks (LIFO), wait for tasks to finish
     │
     ▼
-2. time.Sleep(drain_wait)      ← "drain_wait_seconds" (default 3)
+2. ready.Store(false)          ← readiness probe starts failing
+    │
+    ▼
+3. time.Sleep(drain_wait)      ← "drain_wait_seconds" (default 3)
     │                            Purpose: give the load balancer / kube-proxy
     │                            time to notice the failed readiness probe and
     │                            stop routing NEW requests to this pod.
@@ -330,7 +411,7 @@ SIGTERM received
     │                            and finishing in-flight requests.
     │
     ▼
-3. echo.Shutdown(ctx)          ← "shutdown_timeout_seconds" (default 10)
+4. echo.Shutdown(ctx)          ← "shutdown_timeout_seconds" (default 10)
     │                            Purpose: hard deadline for Echo to finish
     │                            processing any remaining in-flight HTTP
     │                            requests. If they don't complete within this
@@ -338,8 +419,10 @@ SIGTERM received
     │                            connections are forcibly closed.
     │
     ▼
-4. Process exits
+5. Process exits
 ```
+
+> **Why tasks shut down first:** Background tasks may depend on the HTTP server still being available (e.g., sending final metrics, deregistering from a service registry). Shutting them down before the server ensures they can complete their cleanup.
 
 ### `drain_wait_seconds` vs `shutdown_timeout_seconds`
 
@@ -386,6 +469,8 @@ gokux/
 │   ├── server.go
 │   ├── health.go
 │   └── metrics.go
+├── job/                     # Background task runner with graceful shutdown
+│   └── runner.go
 ├── config/                  # konf-based 12-factor configuration
 │   └── config.go
 ├── logging/                 # Structured logger (zap + slog-zap)

@@ -8,8 +8,10 @@ import (
 	"flag"
 	"net/http"
 	"sync/atomic"
+	"time"
 
 	"github.com/dengliu/gokux"
+	"github.com/dengliu/gokux/job"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -80,7 +82,39 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"message": "hello"})
 	})
 
-	// Run starts the server and blocks until SIGINT/SIGTERM.
+	// Register a long-running background task with per-task shutdown.
+	// This example simulates a worker that processes items every 5 seconds
+	// and closes its resources when the application shuts down.
+	app.TaskRunner.Add(job.Task{
+		Name: "background-worker",
+		Run: func(ctx context.Context) error {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-ticker.C:
+					app.Logger.Info("background worker tick")
+				}
+			}
+		},
+		// Shutdown receives a fresh context (not cancelled) with the
+		// remaining shutdown timeout, so context-aware cleanup works.
+		Shutdown: func(ctx context.Context) error {
+			app.Logger.Info("background worker cleaning up")
+			return nil
+		},
+	})
+
+	// Register a global shutdown callback for cross-cutting cleanup.
+	app.TaskRunner.OnShutdown("flush-logs", func(ctx context.Context) error {
+		app.Logger.Info("flushing logs before shutdown")
+		return nil
+	})
+
+	// Run starts background tasks and the server, then blocks until SIGINT/SIGTERM.
 	if err := app.Run(context.Background()); err != nil {
 		panic(err)
 	}

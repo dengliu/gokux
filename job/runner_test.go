@@ -1,0 +1,413 @@
+package job
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// discardLogger returns a logger that discards all output.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestNewTaskRunner(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+	if r == nil {
+		t.Fatal("NewTaskRunner returned nil")
+	}
+}
+
+func TestTaskRunner_StartAndShutdown(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var ran atomic.Bool
+
+	r.Add(Task{
+		Name: "test-task",
+		Run: func(ctx context.Context) error {
+			ran.Store(true)
+			<-ctx.Done()
+			return nil
+		},
+	})
+
+	ctx := context.Background()
+	r.Start(ctx)
+
+	// Give the goroutine time to start.
+	time.Sleep(50 * time.Millisecond)
+
+	if !ran.Load() {
+		t.Fatal("task did not run")
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown returned error: %v", err)
+	}
+}
+
+func TestTaskRunner_MultipleTasksAllRun(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	const taskCount = 5
+	var started atomic.Int32
+
+	for i := range taskCount {
+		name := "task-" + string(rune('A'+i))
+		r.Add(Task{
+			Name: name,
+			Run: func(ctx context.Context) error {
+				started.Add(1)
+				<-ctx.Done()
+				return nil
+			},
+		})
+	}
+
+	r.Start(context.Background())
+	time.Sleep(100 * time.Millisecond)
+
+	if got := started.Load(); got != taskCount {
+		t.Fatalf("expected %d tasks started, got %d", taskCount, got)
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_TaskError(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	r.Add(Task{
+		Name: "failing-task",
+		Run: func(_ context.Context) error {
+			return errors.New("task exploded")
+		},
+	})
+
+	r.Start(context.Background())
+
+	// The task returns an error immediately, shutdown should succeed.
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_OnShutdownCallbacksLIFO(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var mu sync.Mutex
+	var order []string
+
+	r.OnShutdown("first", func(_ context.Context) error {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, "first")
+		return nil
+	})
+
+	r.OnShutdown("second", func(_ context.Context) error {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, "second")
+		return nil
+	})
+
+	r.OnShutdown("third", func(_ context.Context) error {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, "third")
+		return nil
+	})
+
+	r.Start(context.Background())
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	expected := []string{"third", "second", "first"}
+	if len(order) != len(expected) {
+		t.Fatalf("expected %d callbacks, got %d", len(expected), len(order))
+	}
+
+	for i, name := range expected {
+		if order[i] != name {
+			t.Errorf("callback %d: expected %q, got %q", i, name, order[i])
+		}
+	}
+}
+
+func TestTaskRunner_OnShutdownCallbackError(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	r.OnShutdown("bad-callback", func(_ context.Context) error {
+		return errors.New("cleanup failed")
+	})
+
+	r.Start(context.Background())
+
+	err := r.Shutdown(2 * time.Second)
+	if err == nil {
+		t.Fatal("expected shutdown error from callback, got nil")
+	}
+
+	if !errors.Is(err, errors.Unwrap(err)) {
+		// Just check the error string contains the callback name.
+		if got := err.Error(); got == "" {
+			t.Fatal("expected non-empty error")
+		}
+	}
+}
+
+func TestTaskRunner_ShutdownTimeout(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	r.Add(Task{
+		Name: "stuck-task",
+		Run: func(ctx context.Context) error {
+			<-ctx.Done()
+			// Simulate a task that takes too long to clean up.
+			time.Sleep(5 * time.Second)
+			return nil
+		},
+	})
+
+	r.Start(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	err := r.Shutdown(200 * time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+}
+
+func TestTaskRunner_StartIdempotent(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var count atomic.Int32
+
+	r.Add(Task{
+		Name: "once",
+		Run: func(ctx context.Context) error {
+			count.Add(1)
+			<-ctx.Done()
+			return nil
+		},
+	})
+
+	ctx := context.Background()
+	r.Start(ctx)
+	r.Start(ctx) // second call should be a no-op
+	r.Start(ctx) // third call should be a no-op
+
+	time.Sleep(100 * time.Millisecond)
+
+	if got := count.Load(); got != 1 {
+		t.Fatalf("expected task to run once, got %d", got)
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_NoTasksOrCallbacks(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	r.Start(context.Background())
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error with no tasks: %v", err)
+	}
+}
+
+func TestTaskRunner_TaskCompletesBeforeShutdown(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var completed atomic.Bool
+
+	r.Add(Task{
+		Name: "quick-task",
+		Run: func(_ context.Context) error {
+			completed.Store(true)
+			return nil // completes immediately
+		},
+	})
+
+	r.Start(context.Background())
+	time.Sleep(100 * time.Millisecond)
+
+	if !completed.Load() {
+		t.Fatal("task did not complete")
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_PerTaskShutdown(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var shutdownCalled atomic.Bool
+
+	r.Add(Task{
+		Name: "with-shutdown",
+		Run: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		Shutdown: func(ctx context.Context) error {
+			// Verify the context is NOT cancelled (fresh deadline context).
+			if ctx.Err() != nil {
+				t.Error("shutdown context should not be cancelled")
+			}
+			shutdownCalled.Store(true)
+			return nil
+		},
+	})
+
+	r.Start(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+
+	if !shutdownCalled.Load() {
+		t.Fatal("per-task Shutdown was not called")
+	}
+}
+
+func TestTaskRunner_PerTaskShutdownError(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	r.Add(Task{
+		Name: "bad-shutdown",
+		Run: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		Shutdown: func(_ context.Context) error {
+			return errors.New("cleanup exploded")
+		},
+	})
+
+	r.Start(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	err := r.Shutdown(2 * time.Second)
+	if err == nil {
+		t.Fatal("expected error from per-task Shutdown, got nil")
+	}
+}
+
+func TestTaskRunner_PerTaskShutdownBeforeGlobal(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var mu sync.Mutex
+	var order []string
+
+	r.Add(Task{
+		Name: "task-A",
+		Run: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		Shutdown: func(_ context.Context) error {
+			mu.Lock()
+			defer mu.Unlock()
+			order = append(order, "task-A-shutdown")
+			return nil
+		},
+	})
+
+	r.OnShutdown("global-cleanup", func(_ context.Context) error {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, "global-cleanup")
+		return nil
+	})
+
+	r.Start(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	expected := []string{"task-A-shutdown", "global-cleanup"}
+	if len(order) != len(expected) {
+		t.Fatalf("expected %d callbacks, got %d: %v", len(expected), len(order), order)
+	}
+
+	for i, name := range expected {
+		if order[i] != name {
+			t.Errorf("callback %d: expected %q, got %q", i, name, order[i])
+		}
+	}
+}
+
+func TestTaskRunner_PerTaskShutdownNilSkipped(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	r.Add(Task{
+		Name: "no-shutdown",
+		Run: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		// Shutdown is nil — should be skipped without error.
+	})
+
+	r.Start(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_ParentContextCancellation(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var stopped atomic.Bool
+
+	r.Add(Task{
+		Name: "ctx-task",
+		Run: func(ctx context.Context) error {
+			<-ctx.Done()
+			stopped.Store(true)
+			return nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Start(ctx)
+
+	time.Sleep(50 * time.Millisecond)
+	cancel() // cancel the parent context
+	time.Sleep(100 * time.Millisecond)
+
+	if !stopped.Load() {
+		t.Fatal("task did not stop when parent context was cancelled")
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}

@@ -25,6 +25,7 @@ import (
 	"syscall"
 
 	"github.com/dengliu/gokux/config"
+	"github.com/dengliu/gokux/job"
 	"github.com/dengliu/gokux/logging"
 	"github.com/dengliu/gokux/server"
 	"go.opentelemetry.io/otel/metric"
@@ -36,13 +37,19 @@ import (
 type HealthCheck = server.HealthCheck
 
 // App is a Kubernetes-ready microservice with built-in health checks,
-// metrics, structured logging, and graceful shutdown.
+// metrics, structured logging, graceful shutdown, and background task
+// management.
 type App struct {
 	opts        options
 	initialized bool
 	Config      *config.Config
 	Logger      *slog.Logger
 	Server      *server.Server
+
+	// TaskRunner manages long-running background goroutines and shutdown
+	// callbacks. Use Add to register tasks before Run, and OnShutdown
+	// to register cleanup hooks.
+	TaskRunner *job.TaskRunner
 }
 
 // New creates a new App with the given Option(s).
@@ -95,6 +102,7 @@ func (a *App) Init() error {
 		return fmt.Errorf("create server: %w", err)
 	}
 	a.Server = srv
+	a.TaskRunner = job.NewTaskRunner(a.Logger)
 	a.initialized = true
 
 	return nil
@@ -130,9 +138,10 @@ func (a *App) AddReadinessCheck(name string, check HealthCheck) {
 	a.Server.AddReadinessCheck(name, check)
 }
 
-// Run starts the server and blocks until the context is canceled or
-// SIGINT/SIGTERM is received. It then performs a graceful shutdown
-// and returns any error.
+// Run starts background tasks and the HTTP server, then blocks until the
+// context is canceled or SIGINT/SIGTERM is received. It performs a graceful
+// shutdown of tasks first (so they can still use the server if needed),
+// then the server itself.
 // If Init has not been called, Run calls it automatically.
 func (a *App) Run(ctx context.Context) error {
 	if !a.initialized {
@@ -140,6 +149,9 @@ func (a *App) Run(ctx context.Context) error {
 			return fmt.Errorf("init: %w", err)
 		}
 	}
+
+	// Start background tasks.
+	a.TaskRunner.Start(ctx)
 
 	// Start the server in a goroutine.
 	go func() {
@@ -159,8 +171,15 @@ func (a *App) Run(ctx context.Context) error {
 		a.Logger.Info("context canceled")
 	}
 
-	// Graceful shutdown with configurable timeout.
-	if err := a.Server.Shutdown(a.Config.Server.ShutdownTimeoutDuration()); err != nil {
+	shutdownTimeout := a.Config.Server.ShutdownTimeoutDuration()
+
+	// Shutdown tasks first — they may depend on the server being up.
+	if err := a.TaskRunner.Shutdown(shutdownTimeout); err != nil {
+		a.Logger.Error("task runner shutdown error", "error", err)
+	}
+
+	// Graceful shutdown of the HTTP server.
+	if err := a.Server.Shutdown(shutdownTimeout); err != nil {
 		return fmt.Errorf("shutdown: %w", err)
 	}
 
