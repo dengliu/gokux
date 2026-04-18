@@ -382,6 +382,41 @@ func TestTaskRunner_PerTaskShutdownNilSkipped(t *testing.T) {
 	}
 }
 
+func TestTaskRunner_PanicRecovery(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var otherTaskRan atomic.Bool
+
+	// A task that panics should not crash the process or other tasks.
+	r.Add(Task{
+		Name: "panicking-task",
+		Run: func(_ context.Context) error {
+			panic("something went terribly wrong")
+		},
+	})
+
+	r.Add(Task{
+		Name: "healthy-task",
+		Run: func(ctx context.Context) error {
+			otherTaskRan.Store(true)
+			<-ctx.Done()
+			return nil
+		},
+	})
+
+	r.Start(context.Background())
+	time.Sleep(100 * time.Millisecond)
+
+	// The healthy task should still be running despite the panic.
+	if !otherTaskRan.Load() {
+		t.Fatal("healthy task did not run after another task panicked")
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
 func TestTaskRunner_ParentContextCancellation(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 

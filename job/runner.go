@@ -120,6 +120,11 @@ func (r *TaskRunner) Start(ctx context.Context) {
 
 		go func(task Task) {
 			defer r.wg.Done()
+			defer func() {
+				if p := recover(); p != nil {
+					r.logger.Error("task panicked", "task", task.Name, "panic", p)
+				}
+			}()
 
 			r.logger.Info("task started", "task", task.Name)
 

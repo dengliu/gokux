@@ -12,6 +12,7 @@ Inspired by [stefanprodan/podinfo](https://github.com/stefanprodan/podinfo).
 - **Structured logging** — `log/slog` interface with [zap](https://github.com/uber-go/zap) backend via [slog-zap](https://github.com/samber/slog-zap)
 - **Distributed tracing** — OTel tracing with automatic HTTP spans and W3C context propagation
 - **Background tasks** — Managed long-running goroutines with context-based shutdown and cleanup callbacks via `TaskRunner`
+- **Panic recovery** — Automatic recovery from panics in HTTP handlers (Echo `Recover` middleware) and background tasks, preventing a single failure from crashing the process
 - **Graceful shutdown** — Clean shutdown on `SIGINT`/`SIGTERM` with configurable drain wait and shutdown timeout
 - **Multi-arch images** — `linux/amd64` and `linux/arm64` via Docker buildx and GitHub Actions
 
@@ -193,6 +194,7 @@ app.TaskRunner.Add(job.Task{
 - Graceful shutdown with configurable drain wait and timeout
 - Signal handling (SIGINT/SIGTERM)
 - Background task runner with shutdown callbacks
+- Panic recovery in both HTTP handlers and background tasks
 
 ## Quick Start
 
