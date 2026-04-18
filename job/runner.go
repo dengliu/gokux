@@ -99,6 +99,10 @@ func (r *TaskRunner) OnShutdown(name string, fn func(ctx context.Context) error)
 // The provided context serves as the parent; cancelling it (or calling
 // Shutdown) signals all tasks to stop.
 // Start returns immediately. It is safe to call Start only once.
+//
+// When using App.Run(), Start is called automatically — you do not need
+// to call it yourself. This method is public for users who use TaskRunner
+// independently of App.
 func (r *TaskRunner) Start(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
