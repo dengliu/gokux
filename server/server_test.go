@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	slogecho "github.com/samber/slog-echo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -154,7 +155,12 @@ func TestServer_AddReadinessCheck(t *testing.T) {
 
 func TestSlogMiddleware_SkipsHealthEndpoints(t *testing.T) {
 	logger := testLogger()
-	mw := slogMiddleware(logger)
+	mw := slogecho.NewWithConfig(logger, slogecho.Config{
+		DefaultLevel: slog.LevelInfo,
+		Filters: []slogecho.Filter{
+			slogecho.IgnorePath("/healthz", "/readyz", "/metrics"),
+		},
+	})
 
 	e := newTestEcho()
 	e.Use(mw)
