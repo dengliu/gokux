@@ -3,7 +3,7 @@ module github.com/dengliu/gokux/examples/simpleapp
 go 1.26.2
 
 require (
-	github.com/dengliu/gokux v1.1.1
+	github.com/dengliu/gokux v1.2.0
 	github.com/labstack/echo/v4 v4.15.1
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.43.0
