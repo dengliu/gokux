@@ -203,17 +203,20 @@ app.TaskRunner.Add(job.Task{
 ## Quick Start
 
 ```bash
-# Build and run locally
-make run
+# Run library tests
+make test
 
-# Or run the example directly with Go
-go run ./examples/simpleapp -f config.yaml
+# Run the example app
+cd examples/simpleapp && make run
+
+# Or directly with Go
+go run ./examples/simpleapp -f examples/simpleapp/config.yaml
 
 # Cascading config files (later overrides earlier)
 go run ./examples/simpleapp -f config.yaml -f config-dev.yaml
 ```
 
-The server starts on port `8080` by default.
+The example server starts on port `8080` by default.
 
 ## Configuration
 
@@ -386,7 +389,11 @@ W3C TraceContext and Baggage propagation is configured automatically. Trace IDs 
 
 ## Docker
 
+The example app includes a multi-arch Dockerfile:
+
 ```bash
+cd examples/simpleapp
+
 # Build multi-arch image
 make docker-build
 
