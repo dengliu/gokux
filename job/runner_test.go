@@ -382,6 +382,126 @@ func TestTaskRunner_PerTaskShutdownNilSkipped(t *testing.T) {
 	}
 }
 
+func TestTaskRunner_RestartOnFailure_Error(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var attempts atomic.Int32
+
+	r.Add(Task{
+		Name: "restartable",
+		Run: func(ctx context.Context) error {
+			n := attempts.Add(1)
+			if n < 3 {
+				return errors.New("transient error")
+			}
+			// Succeed on the 3rd attempt, then block until shutdown.
+			<-ctx.Done()
+			return nil
+		},
+		RestartOnFailure: true,
+	})
+
+	r.Start(context.Background())
+
+	// Wait for the task to restart a few times (backoff is 1s, so 3 attempts < 4s).
+	time.Sleep(4 * time.Second)
+
+	if got := attempts.Load(); got < 3 {
+		t.Fatalf("expected at least 3 attempts, got %d", got)
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_RestartOnFailure_Panic(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var attempts atomic.Int32
+
+	r.Add(Task{
+		Name: "panic-restart",
+		Run: func(ctx context.Context) error {
+			n := attempts.Add(1)
+			if n < 3 {
+				panic("boom")
+			}
+			<-ctx.Done()
+			return nil
+		},
+		RestartOnFailure: true,
+	})
+
+	r.Start(context.Background())
+	time.Sleep(4 * time.Second)
+
+	if got := attempts.Load(); got < 3 {
+		t.Fatalf("expected at least 3 attempts after panic, got %d", got)
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_RestartOnFailure_StopsDuringShutdown(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var attempts atomic.Int32
+
+	r.Add(Task{
+		Name: "fail-forever",
+		Run: func(_ context.Context) error {
+			attempts.Add(1)
+			return errors.New("always fails")
+		},
+		RestartOnFailure: true,
+	})
+
+	r.Start(context.Background())
+	time.Sleep(2 * time.Second)
+
+	// Shutdown should stop the restart loop.
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+
+	countAtShutdown := attempts.Load()
+	time.Sleep(2 * time.Second)
+
+	// No more restarts should happen after shutdown.
+	if got := attempts.Load(); got != countAtShutdown {
+		t.Fatalf("task restarted after shutdown: got %d, expected %d", got, countAtShutdown)
+	}
+}
+
+func TestTaskRunner_NoRestart_WhenDisabled(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var attempts atomic.Int32
+
+	r.Add(Task{
+		Name: "no-restart",
+		Run: func(_ context.Context) error {
+			attempts.Add(1)
+			return errors.New("fail once")
+		},
+		RestartOnFailure: false, // default
+	})
+
+	r.Start(context.Background())
+	time.Sleep(500 * time.Millisecond)
+
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 attempt (no restart), got %d", got)
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
 func TestTaskRunner_PanicRecovery(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 

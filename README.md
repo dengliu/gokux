@@ -129,6 +129,9 @@ app.TaskRunner.Add(job.Task{
     Shutdown: func(ctx context.Context) error {
         return pgConn.Close(ctx) // ctx is still valid here
     },
+    // Auto-restart on panic or error with exponential backoff.
+    // During shutdown, the task is NOT restarted.
+    RestartOnFailure: true,
 })
 
 // Global shutdown callbacks for cross-cutting concerns (run in LIFO order,
@@ -166,6 +169,7 @@ app.TaskRunner.Add(job.Task{
 | `Name` | `string` | Human-readable identifier for logs |
 | `Run` | `func(ctx) error` | The work function; ctx is cancelled on shutdown |
 | `Shutdown` | `func(ctx) error` | Optional cleanup; receives a fresh (not cancelled) context with the shutdown deadline |
+| `RestartOnFailure` | `bool` | When `true`, auto-restarts the task after a panic or error with exponential backoff (1s → 2s → 4s → … → 60s max). Not restarted during shutdown. Default: `false` |
 
 #### TaskRunner API
 

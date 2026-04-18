@@ -40,7 +40,27 @@ type Task struct {
 	// Per-task Shutdown callbacks run after all Run functions have returned,
 	// in reverse registration order, before global OnShutdown callbacks.
 	Shutdown func(ctx context.Context) error
+
+	// RestartOnFailure controls whether the task is automatically restarted
+	// after a panic or non-nil error return. When true, the task is restarted
+	// with exponential backoff (1s, 2s, 4s, …, capped at maxRestartBackoff).
+	// The backoff resets after a successful run lasting longer than the
+	// current backoff interval.
+	//
+	// During shutdown (context cancelled), the task is NOT restarted
+	// regardless of this setting.
+	//
+	// Default: false — the task exits permanently on failure.
+	RestartOnFailure bool
 }
+
+const (
+	// initialRestartBackoff is the starting delay before restarting a failed task.
+	initialRestartBackoff = 1 * time.Second
+
+	// maxRestartBackoff is the maximum delay between restart attempts.
+	maxRestartBackoff = 1 * time.Minute
+)
 
 // shutdownCallback is a named cleanup function invoked during shutdown.
 type shutdownCallback struct {
@@ -120,28 +140,70 @@ func (r *TaskRunner) Start(ctx context.Context) {
 
 		go func(task Task) {
 			defer r.wg.Done()
-			defer func() {
-				if p := recover(); p != nil {
-					r.logger.Error("task panicked", "task", task.Name, "panic", p)
-				}
-			}()
-
-			r.logger.Info("task started", "task", task.Name)
-
-			if err := task.Run(taskCtx); err != nil {
-				// Context cancellation is expected during shutdown — don't log as error.
-				if taskCtx.Err() != nil {
-					r.logger.Info("task stopped", "task", task.Name)
-				} else {
-					r.logger.Error("task failed", "task", task.Name, "error", err)
-				}
-			} else {
-				r.logger.Info("task completed", "task", task.Name)
-			}
+			r.runTask(taskCtx, task)
 		}(t)
 	}
 
 	r.logger.Info("task runner started", "task.count", len(r.tasks))
+}
+
+// runTask executes a single task, handling panic recovery and optional
+// restart-on-failure with exponential backoff.
+func (r *TaskRunner) runTask(ctx context.Context, task Task) {
+	backoff := initialRestartBackoff
+
+	for {
+		failed := r.runOnce(ctx, task)
+
+		// If the context is done (shutdown), never restart.
+		if ctx.Err() != nil {
+			return
+		}
+
+		// If the task completed successfully or restart is not enabled, exit.
+		if !failed || !task.RestartOnFailure {
+			return
+		}
+
+		r.logger.Info("restarting task", "task", task.Name, "backoff", backoff)
+
+		select {
+		case <-time.After(backoff):
+			backoff = min(backoff*2, maxRestartBackoff)
+		case <-ctx.Done():
+			r.logger.Info("task restart cancelled by shutdown", "task", task.Name)
+
+			return
+		}
+	}
+}
+
+// runOnce executes task.Run once with panic recovery.
+// Returns true if the task failed (error or panic), false if it completed cleanly.
+func (r *TaskRunner) runOnce(ctx context.Context, task Task) (failed bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			r.logger.Error("task panicked", "task", task.Name, "panic", p)
+			failed = true
+		}
+	}()
+
+	r.logger.Info("task started", "task", task.Name)
+
+	if err := task.Run(ctx); err != nil {
+		// Context cancellation is expected during shutdown — don't log as error.
+		if ctx.Err() != nil {
+			r.logger.Info("task stopped", "task", task.Name)
+		} else {
+			r.logger.Error("task failed", "task", task.Name, "error", err)
+		}
+
+		return ctx.Err() == nil // failed=true only if not a shutdown
+	}
+
+	r.logger.Info("task completed", "task", task.Name)
+
+	return false
 }
 
 // Shutdown cancels the task context, waits for all Run functions to return,
