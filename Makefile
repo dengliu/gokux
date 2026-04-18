@@ -1,4 +1,4 @@
-.PHONY: test lint clean
+.PHONY: test lint clean tag
 
 # Run library tests
 test:
@@ -16,3 +16,13 @@ lint:
 # Remove build artifacts
 clean:
 	rm -rf coverage.out
+
+# Tag the current commit with a semver version and push it.
+# Usage: make tag VERSION=v0.2.0
+tag:
+	@test -n "$(VERSION)" || (echo "Usage: make tag VERSION=v0.2.0" && exit 1)
+	@echo "$(VERSION)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+' || \
+		(echo "VERSION must be semver (e.g., v0.2.0)" && exit 1)
+	@git diff --quiet || (echo "error: working tree is dirty — commit or stash first" && exit 1)
+	git tag -a "$(VERSION)" -m "Release $(VERSION)"
+	git push origin "$(VERSION)"
