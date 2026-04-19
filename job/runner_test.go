@@ -16,6 +16,14 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// mustAdd adds a task to the runner, failing the test if Add returns an error.
+func mustAdd(t *testing.T, r *TaskRunner, task Task) {
+	t.Helper()
+	if err := r.Add(task); err != nil {
+		t.Fatalf("Add(%q) failed: %v", task.Name, err)
+	}
+}
+
 func TestNewTaskRunner(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 	if r == nil {
@@ -28,7 +36,7 @@ func TestTaskRunner_StartAndShutdown(t *testing.T) {
 
 	var ran atomic.Bool
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "test-task",
 		Run: func(ctx context.Context) error {
 			ran.Store(true)
@@ -60,7 +68,7 @@ func TestTaskRunner_MultipleTasksAllRun(t *testing.T) {
 
 	for i := range taskCount {
 		name := "task-" + string(rune('A'+i))
-		r.Add(Task{
+		mustAdd(t, r, Task{
 			Name: name,
 			Run: func(ctx context.Context) error {
 				started.Add(1)
@@ -85,7 +93,7 @@ func TestTaskRunner_MultipleTasksAllRun(t *testing.T) {
 func TestTaskRunner_TaskError(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "failing-task",
 		Run: func(_ context.Context) error {
 			return errors.New("task exploded")
@@ -173,7 +181,7 @@ func TestTaskRunner_OnShutdownCallbackError(t *testing.T) {
 func TestTaskRunner_ShutdownTimeout(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "stuck-task",
 		Run: func(ctx context.Context) error {
 			<-ctx.Done()
@@ -197,7 +205,7 @@ func TestTaskRunner_StartIdempotent(t *testing.T) {
 
 	var count atomic.Int32
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "once",
 		Run: func(ctx context.Context) error {
 			count.Add(1)
@@ -237,7 +245,7 @@ func TestTaskRunner_TaskCompletesBeforeShutdown(t *testing.T) {
 
 	var completed atomic.Bool
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "quick-task",
 		Run: func(_ context.Context) error {
 			completed.Store(true)
@@ -262,7 +270,7 @@ func TestTaskRunner_PerTaskShutdown(t *testing.T) {
 
 	var shutdownCalled atomic.Bool
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "with-shutdown",
 		Run: func(ctx context.Context) error {
 			<-ctx.Done()
@@ -293,7 +301,7 @@ func TestTaskRunner_PerTaskShutdown(t *testing.T) {
 func TestTaskRunner_PerTaskShutdownError(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "bad-shutdown",
 		Run: func(ctx context.Context) error {
 			<-ctx.Done()
@@ -319,7 +327,7 @@ func TestTaskRunner_PerTaskShutdownBeforeGlobal(t *testing.T) {
 	var mu sync.Mutex
 	var order []string
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "task-A",
 		Run: func(ctx context.Context) error {
 			<-ctx.Done()
@@ -365,7 +373,7 @@ func TestTaskRunner_PerTaskShutdownBeforeGlobal(t *testing.T) {
 func TestTaskRunner_PerTaskShutdownNilSkipped(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "no-shutdown",
 		Run: func(ctx context.Context) error {
 			<-ctx.Done()
@@ -387,7 +395,7 @@ func TestTaskRunner_RestartOnFailure_Error(t *testing.T) {
 
 	var attempts atomic.Int32
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "restartable",
 		Run: func(ctx context.Context) error {
 			n := attempts.Add(1)
@@ -420,7 +428,7 @@ func TestTaskRunner_RestartOnFailure_Panic(t *testing.T) {
 
 	var attempts atomic.Int32
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "panic-restart",
 		Run: func(ctx context.Context) error {
 			n := attempts.Add(1)
@@ -450,7 +458,7 @@ func TestTaskRunner_RestartOnFailure_StopsDuringShutdown(t *testing.T) {
 
 	var attempts atomic.Int32
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "fail-forever",
 		Run: func(_ context.Context) error {
 			attempts.Add(1)
@@ -481,7 +489,7 @@ func TestTaskRunner_NoRestart_WhenDisabled(t *testing.T) {
 
 	var attempts atomic.Int32
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "no-restart",
 		Run: func(_ context.Context) error {
 			attempts.Add(1)
@@ -508,14 +516,14 @@ func TestTaskRunner_PanicRecovery(t *testing.T) {
 	var otherTaskRan atomic.Bool
 
 	// A task that panics should not crash the process or other tasks.
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "panicking-task",
 		Run: func(_ context.Context) error {
 			panic("something went terribly wrong")
 		},
 	})
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "healthy-task",
 		Run: func(ctx context.Context) error {
 			otherTaskRan.Store(true)
@@ -542,7 +550,7 @@ func TestTaskRunner_ParentContextCancellation(t *testing.T) {
 
 	var stopped atomic.Bool
 
-	r.Add(Task{
+	mustAdd(t, r, Task{
 		Name: "ctx-task",
 		Run: func(ctx context.Context) error {
 			<-ctx.Done()
@@ -560,6 +568,41 @@ func TestTaskRunner_ParentContextCancellation(t *testing.T) {
 
 	if !stopped.Load() {
 		t.Fatal("task did not stop when parent context was cancelled")
+	}
+
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+}
+
+func TestTaskRunner_AddAfterStart_ReturnsError(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	mustAdd(t, r, Task{
+		Name: "initial-task",
+		Run: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+	})
+
+	r.Start(context.Background())
+
+	// Adding a task after Start should return an error.
+	err := r.Add(Task{
+		Name: "late-task",
+		Run: func(ctx context.Context) error {
+			t.Error("late task should never run")
+			<-ctx.Done()
+			return nil
+		},
+		Shutdown: func(_ context.Context) error {
+			t.Error("late task Shutdown should never run")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when adding task after Start, got nil")
 	}
 
 	if err := r.Shutdown(2 * time.Second); err != nil {

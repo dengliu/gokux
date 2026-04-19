@@ -96,13 +96,20 @@ func NewTaskRunner(logger *slog.Logger) *TaskRunner {
 }
 
 // Add registers a task to be started when Start is called.
-// Add must be called before Start; adding tasks after Start is a no-op
-// (the task will not be launched).
-func (r *TaskRunner) Add(t Task) {
+// Add must be called before Start; calls after Start are rejected and
+// the task's Shutdown callback will NOT run during cleanup.
+// Returns an error if the runner has already started.
+func (r *TaskRunner) Add(t Task) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.started {
+		return fmt.Errorf("task %q: cannot add after Start", t.Name)
+	}
+
 	r.tasks = append(r.tasks, t)
+
+	return nil
 }
 
 // OnShutdown registers a callback that is invoked during graceful shutdown.
