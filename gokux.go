@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/dengliu/gokux/config"
 	"github.com/dengliu/gokux/job"
@@ -199,14 +200,21 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	shutdownTimeout := a.Config.Server.ShutdownTimeoutDuration()
+	deadline := time.Now().Add(shutdownTimeout)
 
 	// Shutdown tasks first — they may depend on the server being up.
-	if err := a.TaskRunner.Shutdown(shutdownTimeout); err != nil {
+	// The task runner consumes part of the shared deadline; the server
+	// gets whatever remains, so the total never exceeds shutdownTimeout.
+	if err := a.TaskRunner.Shutdown(time.Until(deadline)); err != nil {
 		a.Logger.Error("task runner shutdown error", "error", err)
 	}
 
-	// Graceful shutdown of the HTTP server.
-	if err := a.Server.Shutdown(shutdownTimeout); err != nil {
+	// Graceful shutdown of the HTTP server with remaining budget.
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		remaining = 1 // minimal positive duration so context.WithTimeout doesn't panic
+	}
+	if err := a.Server.Shutdown(remaining); err != nil {
 		return fmt.Errorf("shutdown: %w", err)
 	}
 
