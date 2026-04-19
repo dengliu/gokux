@@ -545,6 +545,43 @@ func TestTaskRunner_PanicRecovery(t *testing.T) {
 	}
 }
 
+func TestTaskRunner_OnPanic_FiresWithTaskName(t *testing.T) {
+	r := NewTaskRunner(discardLogger())
+
+	var gotName atomic.Value
+	r.SetOnPanic(func(name string) {
+		gotName.Store(name)
+	})
+
+	mustAdd(t, r, Task{
+		Name: "panicker",
+		Run: func(_ context.Context) error {
+			panic("kaboom")
+		},
+	})
+
+	r.Start(context.Background())
+	// Wait for the panic recovery to run and invoke the hook.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if v := gotName.Load(); v != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := r.Shutdown(2 * time.Second); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+
+	v := gotName.Load()
+	if v == nil {
+		t.Fatal("OnPanic hook was not called")
+	}
+	if got, want := v.(string), "panicker"; got != want {
+		t.Fatalf("OnPanic received name %q, want %q", got, want)
+	}
+}
+
 func TestTaskRunner_ParentContextCancellation(t *testing.T) {
 	r := NewTaskRunner(discardLogger())
 

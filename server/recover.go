@@ -7,18 +7,21 @@ import (
 	"runtime/debug"
 
 	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // recoverMiddleware catches panics from downstream handlers, records
 // them on the active OTel span (so traces reflect the failure instead
-// of showing a silent 500), logs the stack, and returns 500.
+// of showing a silent 500), logs the stack, increments the panic
+// counter, and returns 500.
 //
 // Must be installed AFTER otelecho so that trace.SpanFromContext
 // resolves to the request's span. Installed before this middleware,
 // panics would escape the span and the trace would show no error.
-func recoverMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
+func recoverMiddleware(logger *slog.Logger, panicCount metric.Int64Counter) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) (err error) {
 			defer func() {
@@ -40,6 +43,9 @@ func recoverMiddleware(logger *slog.Logger) echo.MiddlewareFunc {
 				span := trace.SpanFromContext(ctx)
 				span.RecordError(panicErr, trace.WithStackTrace(true))
 				span.SetStatus(codes.Error, "handler panic")
+
+				panicCount.Add(ctx, 1,
+					metric.WithAttributes(attribute.String("where", "handler")))
 
 				logger.ErrorContext(ctx, "handler panicked",
 					"error", panicErr.Error(),

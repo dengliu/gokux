@@ -112,6 +112,12 @@ func (a *App) Init() error {
 	}
 	a.Server = srv
 	a.TaskRunner = job.NewTaskRunner(a.Logger)
+	a.TaskRunner.SetOnPanic(func(taskName string) {
+		// Background context: we're in a panic recovery path where the
+		// task's own context may already be cancelled. Counter add is
+		// non-blocking so the empty context is safe.
+		a.Server.RecordPanic(context.Background(), "task")
+	})
 	a.initialized = true
 
 	return nil

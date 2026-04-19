@@ -14,6 +14,8 @@ import (
 	"github.com/labstack/echo/v4"
 	slogecho "github.com/samber/slog-echo"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
@@ -57,7 +59,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 	if traceExporter != nil {
 		e.Use(otelecho.Middleware("gokux"))
 	}
-	e.Use(recoverMiddleware(logger))
+	e.Use(recoverMiddleware(logger, mp.panicCount))
 	e.Use(slogecho.NewWithConfig(logger, slogecho.Config{
 		DefaultLevel:     slog.LevelInfo,
 		ClientErrorLevel: slog.LevelWarn,
@@ -191,5 +193,14 @@ func (s *Server) AddReadinessCheck(name string, check HealthCheck) {
 // is ready to accept traffic, and during shutdown to drain connections.
 func (s *Server) SetReady(ready bool) {
 	s.ready.Store(ready)
+}
+
+// RecordPanic increments the panic counter for the given origin.
+// Allowed values for where are "handler" and "task"; the handler case
+// is incremented automatically by recoverMiddleware, so consumers only
+// need to call this for background work outside the HTTP lifecycle.
+func (s *Server) RecordPanic(ctx context.Context, where string) {
+	s.metrics.panicCount.Add(ctx, 1,
+		metric.WithAttributes(attribute.String("where", where)))
 }
 

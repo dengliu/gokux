@@ -17,10 +17,11 @@ import (
 
 // metricsProvider holds the OTel meter provider and instruments for HTTP metrics.
 type metricsProvider struct {
-	provider *sdkmetric.MeterProvider
-	registry *prometheus.Registry
-	duration metric.Float64Histogram
-	count    metric.Int64Counter
+	provider   *sdkmetric.MeterProvider
+	registry   *prometheus.Registry
+	duration   metric.Float64Histogram
+	count      metric.Int64Counter
+	panicCount metric.Int64Counter
 }
 
 // newMetricsProvider creates an OTel MeterProvider with a dedicated Prometheus
@@ -58,11 +59,23 @@ func newMetricsProvider() (*metricsProvider, error) {
 		return nil, err
 	}
 
+	// Prometheus exporter emits this as gokux_panic_total, labelled by
+	// where={handler,task} so ops can alert on panics from either origin.
+	panicCount, err := meter.Int64Counter(
+		"gokux.panic",
+		metric.WithUnit("{panic}"),
+		metric.WithDescription("Total panics recovered, labelled by origin (handler or task)."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &metricsProvider{
-		provider: provider,
-		registry: registry,
-		duration: duration,
-		count:    count,
+		provider:   provider,
+		registry:   registry,
+		duration:   duration,
+		count:      count,
+		panicCount: panicCount,
 	}, nil
 }
 

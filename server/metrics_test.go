@@ -19,6 +19,36 @@ func TestNewMetricsProvider(t *testing.T) {
 	assert.NotNil(t, mp.registry)
 	assert.NotNil(t, mp.duration)
 	assert.NotNil(t, mp.count)
+	assert.NotNil(t, mp.panicCount)
+}
+
+// Regression test for #27: after a handler panics, /metrics must expose
+// the panic counter in Prometheus format (`gokux_panic_total`) with a
+// label `where="handler"` so ops can alert on handler panics.
+func TestPanicCounter_VisibleOnMetrics(t *testing.T) {
+	cfg := testConfig()
+	srv, err := NewServer(cfg, testLogger(), nil)
+	require.NoError(t, err)
+
+	srv.Echo.GET("/boom", func(c echo.Context) error {
+		panic("bang")
+	})
+
+	// Trigger a handler panic.
+	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+	rec := httptest.NewRecorder()
+	srv.Echo.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	// Scrape /metrics and assert the panic counter is present and labelled.
+	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec = httptest.NewRecorder()
+	srv.Echo.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.Contains(t, body, "gokux_panic_total", "expected gokux_panic_total in /metrics")
+	assert.Contains(t, body, `where="handler"`, "expected where=\"handler\" label on panic counter")
 }
 
 func TestMetricsProvider_Shutdown(t *testing.T) {

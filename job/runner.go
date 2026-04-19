@@ -86,6 +86,7 @@ type TaskRunner struct {
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
 	started   bool
+	onPanic   func(taskName string)
 }
 
 // NewTaskRunner creates a TaskRunner that logs lifecycle events to the given logger.
@@ -110,6 +111,18 @@ func (r *TaskRunner) Add(t Task) error {
 	r.tasks = append(r.tasks, t)
 
 	return nil
+}
+
+// SetOnPanic registers a callback invoked once per task panic, with
+// the offending task's name. Intended for metrics/alerting hooks that
+// need to stay package-independent of the OTel stack. Must be called
+// before Start; later calls take effect for subsequent panics but the
+// contract is "set once at wiring time".
+func (r *TaskRunner) SetOnPanic(fn func(taskName string)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.onPanic = fn
 }
 
 // OnShutdown registers a callback that is invoked during graceful shutdown.
@@ -191,6 +204,9 @@ func (r *TaskRunner) runOnce(ctx context.Context, task Task) (failed bool) {
 	defer func() {
 		if p := recover(); p != nil {
 			r.logger.Error("task panicked", "task", task.Name, "panic", p)
+			if r.onPanic != nil {
+				r.onPanic(task.Name)
+			}
 			failed = true
 		}
 	}()
