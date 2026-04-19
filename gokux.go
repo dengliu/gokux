@@ -18,8 +18,10 @@ package gokux
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -170,18 +172,21 @@ func (a *App) Run(ctx context.Context) error {
 	// Start background tasks.
 	a.TaskRunner.Start(ctx)
 
-	// Start the server in a goroutine.
+	// Start the server in a goroutine; feed errors back via serverErr.
+	serverErr := make(chan error, 1)
 	go func() {
-		if err := a.Server.Start(); err != nil {
-			a.Logger.Info("server stopped", "error", err.Error())
+		if err := a.Server.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
 		}
 	}()
 
-	// Wait for context cancellation or interrupt signal.
+	// Wait for context cancellation, interrupt signal, or server failure.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
+	case err := <-serverErr:
+		return fmt.Errorf("server start: %w", err)
 	case sig := <-quit:
 		a.Logger.Info("received shutdown signal", "signal", sig.String())
 	case <-ctx.Done():
