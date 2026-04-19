@@ -12,23 +12,25 @@ func TestNewLogger_ValidLevels(t *testing.T) {
 
 	for _, level := range levels {
 		t.Run(level, func(t *testing.T) {
-			logger, err := NewLogger(level)
+			logger, sync, err := NewLogger(level)
 			require.NoError(t, err)
 			assert.NotNil(t, logger)
+			assert.NotNil(t, sync)
 		})
 	}
 }
 
 func TestNewLogger_InvalidLevel(t *testing.T) {
-	_, err := NewLogger("invalid")
+	_, _, err := NewLogger("invalid")
 	assert.Error(t, err)
 }
 
 func TestNewLogger_EmptyLevel(t *testing.T) {
 	// zap treats empty string as info level (its zero value).
-	logger, err := NewLogger("")
+	logger, sync, err := NewLogger("")
 	require.NoError(t, err)
 	assert.NotNil(t, logger)
+	assert.NotNil(t, sync)
 }
 
 func TestNewLogger_CaseInsensitiveLevel(t *testing.T) {
@@ -37,9 +39,20 @@ func TestNewLogger_CaseInsensitiveLevel(t *testing.T) {
 
 	for _, level := range levels {
 		t.Run(level, func(t *testing.T) {
-			logger, err := NewLogger(level)
+			logger, sync, err := NewLogger(level)
 			require.NoError(t, err)
 			assert.NotNil(t, logger)
+			assert.NotNil(t, sync)
 		})
 	}
+}
+
+func TestNewLogger_SyncFiltersBenignStdoutErrors(t *testing.T) {
+	// Under `go test` stdout is a pipe; zap.Sync returns EINVAL/ENOTTY
+	// depending on platform. The returned sync function must filter
+	// those and surface nil so callers can propagate real errors.
+	_, sync, err := NewLogger("info")
+	require.NoError(t, err)
+	require.NotNil(t, sync)
+	assert.NoError(t, sync(), "sync on stdout-backed logger should filter benign errors")
 }

@@ -50,6 +50,11 @@ type App struct {
 	// callbacks. Use Add to register tasks before Run, and OnShutdown
 	// to register cleanup hooks.
 	TaskRunner *job.TaskRunner
+
+	// loggerSync flushes the logger's buffered entries on shutdown.
+	// Set only when the logger was built internally; nil when the
+	// caller supplied one via WithLogger (lifecycle is theirs to manage).
+	loggerSync func() error
 }
 
 // New creates a new App with the given Option(s).
@@ -90,11 +95,12 @@ func (a *App) Init() error {
 	if a.opts.logger != nil {
 		a.Logger = a.opts.logger
 	} else {
-		logger, err := logging.NewLogger(cfg.Log.Level)
+		logger, sync, err := logging.NewLogger(cfg.Log.Level)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
 		a.Logger = logger
+		a.loggerSync = sync
 	}
 
 	srv, err := server.NewServer(cfg, a.Logger, a.opts.traceExporter)
@@ -149,6 +155,17 @@ func (a *App) Run(ctx context.Context) error {
 			return fmt.Errorf("init: %w", err)
 		}
 	}
+
+	// Flush buffered log entries as the very last step, after every other
+	// shutdown log line has been emitted. Falls back to stderr because our
+	// logger may be mid-close when this runs.
+	defer func() {
+		if a.loggerSync != nil {
+			if err := a.loggerSync(); err != nil {
+				fmt.Fprintf(os.Stderr, "logger sync: %v\n", err)
+			}
+		}
+	}()
 
 	// Start background tasks.
 	a.TaskRunner.Start(ctx)
