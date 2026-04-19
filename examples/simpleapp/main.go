@@ -85,7 +85,7 @@ func main() {
 	// Register a long-running background task with per-task shutdown.
 	// This example simulates a worker that processes items every 5 seconds
 	// and closes its resources when the application shuts down.
-	app.TaskRunner.Add(job.Task{
+	if err := app.TaskRunner.Add(job.Task{
 		Name: "background-worker",
 		Run: func(ctx context.Context) error {
 			ticker := time.NewTicker(5 * time.Second)
@@ -107,7 +107,9 @@ func main() {
 			return nil
 		},
 		RestartOnFailure: true,
-	})
+	}); err != nil {
+		panic(err)
+	}
 
 	// Register a global shutdown callback for cross-cutting cleanup.
 	app.TaskRunner.OnShutdown("flush-logs", func(ctx context.Context) error {

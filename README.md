@@ -112,7 +112,9 @@ import "github.com/dengliu/gokux/job"
 // Run receives a context that is cancelled on shutdown.
 // Shutdown receives a FRESH context (not cancelled) with the remaining
 // shutdown timeout, so context-aware cleanup like closing connections works.
-app.TaskRunner.Add(job.Task{
+// Add returns an error if called after the runner has started —
+// handle it so registration errors surface at boot.
+if err := app.TaskRunner.Add(job.Task{
     Name: "pg-to-redis",
     Run: func(ctx context.Context) error {
         for {
@@ -132,7 +134,9 @@ app.TaskRunner.Add(job.Task{
     // Auto-restart on panic or error with exponential backoff.
     // During shutdown, the task is NOT restarted.
     RestartOnFailure: true,
-})
+}); err != nil {
+    panic(err)
+}
 
 // Global shutdown callbacks for cross-cutting concerns (run in LIFO order,
 // after all per-task Shutdown callbacks).
@@ -152,14 +156,16 @@ cronScheduler, _ := gocron.NewScheduler()
 cronScheduler.NewJob(gocron.CronJob("0 * * * *", false),
     gocron.NewTask(func() { refreshCache() }))
 
-app.TaskRunner.Add(job.Task{
+if err := app.TaskRunner.Add(job.Task{
     Name: "cron-scheduler",
     Run: func(ctx context.Context) error {
         cronScheduler.Start()
         <-ctx.Done()
         return cronScheduler.Shutdown()
     },
-})
+}); err != nil {
+    panic(err)
+}
 ```
 
 #### Task struct
