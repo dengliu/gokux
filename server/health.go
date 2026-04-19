@@ -1,16 +1,26 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
 
+// checkTimeout is the maximum time a single health check may run before
+// its context is cancelled. This prevents slow probes from stacking
+// goroutines under Kubernetes' aggressive probe period.
+const checkTimeout = 2 * time.Second
+
 // HealthCheck is a function that reports the health of a dependency.
+// The context carries a deadline derived from the probe handler; callers
+// should pass it to downstream operations (e.g. db.PingContext) so that
+// slow checks are cancelled rather than hanging.
 // Return nil if healthy, or an error describing the problem.
-type HealthCheck func() error
+type HealthCheck func(ctx context.Context) error
 
 // healthHandler holds the readiness state and registered health checks.
 type healthHandler struct {
@@ -47,6 +57,26 @@ func (h *healthHandler) AddReadinessCheck(name string, check HealthCheck) {
 	h.readinessChecks[name] = check
 }
 
+// runChecks executes each check with a bounded per-check context and
+// returns the results map and an allOK flag.
+func runChecks(ctx context.Context, checks map[string]HealthCheck) (map[string]string, bool) {
+	result := make(map[string]string, len(checks))
+	allOK := true
+
+	for name, check := range checks {
+		checkCtx, cancel := context.WithTimeout(ctx, checkTimeout)
+		if err := check(checkCtx); err != nil {
+			result[name] = err.Error()
+			allOK = false
+		} else {
+			result[name] = "ok"
+		}
+		cancel()
+	}
+
+	return result, allOK
+}
+
 // Healthz is the Kubernetes liveness probe handler.
 // GET /healthz — returns 200 when the process is alive and all liveness checks pass.
 // With no registered liveness checks, it always returns 200 {"status": "alive"}.
@@ -58,17 +88,7 @@ func (h *healthHandler) Healthz(c echo.Context) error {
 	}
 	h.mu.RUnlock()
 
-	result := make(map[string]string, len(checks)+1)
-	allOK := true
-
-	for name, check := range checks {
-		if err := check(); err != nil {
-			result[name] = err.Error()
-			allOK = false
-		} else {
-			result[name] = "ok"
-		}
-	}
+	result, allOK := runChecks(c.Request().Context(), checks)
 
 	if allOK {
 		result["status"] = "alive"
@@ -95,22 +115,12 @@ func (h *healthHandler) Readyz(c echo.Context) error {
 	}
 	h.mu.RUnlock()
 
-	result := make(map[string]string, len(checks)+1)
-	allOK := true
+	result, allOK := runChecks(c.Request().Context(), checks)
 
-	// Check the drain flag first.
+	// Check the drain flag.
 	if !h.ready.Load() {
 		result["drain"] = "shutting down"
 		allOK = false
-	}
-
-	for name, check := range checks {
-		if err := check(); err != nil {
-			result[name] = err.Error()
-			allOK = false
-		} else {
-			result[name] = "ok"
-		}
 	}
 
 	if allOK {

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -160,7 +161,7 @@ func TestServer_AddLivenessCheck(t *testing.T) {
 	require.NoError(t, err)
 
 	called := false
-	srv.AddLivenessCheck("test", func() error {
+	srv.AddLivenessCheck("test", func(_ context.Context) error {
 		called = true
 
 		return nil
@@ -183,7 +184,7 @@ func TestServer_AddReadinessCheck(t *testing.T) {
 	srv.SetReady(true)
 
 	called := false
-	srv.AddReadinessCheck("test", func() error {
+	srv.AddReadinessCheck("test", func(_ context.Context) error {
 		called = true
 
 		return nil
