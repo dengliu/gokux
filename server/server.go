@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -94,7 +95,8 @@ func (s *Server) Start() error {
 }
 
 // Shutdown performs a graceful shutdown: marks the service as not-ready,
-// waits for in-flight requests to drain, then stops the server.
+// waits for in-flight requests to drain, then stops the server and
+// flushes the OTel metrics and trace providers.
 func (s *Server) Shutdown(timeout time.Duration) error {
 	s.logger.Info("shutting down server")
 
@@ -111,7 +113,21 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	return s.Echo.Shutdown(ctx)
+	var errs []error
+
+	if err := s.Echo.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("echo shutdown: %w", err))
+	}
+
+	// Flush pending metrics and spans before the process exits.
+	if err := s.metrics.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("metrics provider shutdown: %w", err))
+	}
+	if err := s.traces.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("trace provider shutdown: %w", err))
+	}
+
+	return errors.Join(errs...)
 }
 
 // MeterProvider returns the OTel MeterProvider used by this server.

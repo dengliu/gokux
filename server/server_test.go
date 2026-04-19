@@ -12,6 +12,7 @@ import (
 	slogecho "github.com/samber/slog-echo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/dengliu/gokux/config"
 )
@@ -111,6 +112,24 @@ func TestServer_StartAndShutdown(t *testing.T) {
 	err = srv.Shutdown(5 * time.Second)
 	require.NoError(t, err)
 	assert.False(t, srv.ready.Load(), "ready should be false after shutdown")
+}
+
+func TestServer_Shutdown_FlushesOTelProviders(t *testing.T) {
+	cfg := testConfig()
+	cfg.Server.Port = 0
+	cfg.Server.DrainWaitSeconds = 0
+
+	exporter := tracetest.NewInMemoryExporter()
+	srv, err := NewServer(cfg, testLogger(), exporter)
+	require.NoError(t, err)
+
+	// Start in background.
+	go func() { _ = srv.Start() }()
+	time.Sleep(100 * time.Millisecond)
+
+	// Shutdown should flush both metrics and traces without error.
+	err = srv.Shutdown(5 * time.Second)
+	require.NoError(t, err, "Shutdown should flush OTel providers without error")
 }
 
 func TestServer_AddLivenessCheck(t *testing.T) {
