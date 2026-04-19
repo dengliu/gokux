@@ -180,6 +180,11 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}()
 
+	// Mark the server as ready now that bootstrap is complete and the
+	// listener goroutine is launched. If the bind fails, Run returns
+	// via serverErr before any traffic arrives.
+	a.Server.SetReady(true)
+
 	// Wait for context cancellation, interrupt signal, or server failure.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

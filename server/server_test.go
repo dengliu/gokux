@@ -44,15 +44,37 @@ func TestNewServer(t *testing.T) {
 	assert.NotNil(t, srv.Echo)
 	assert.Equal(t, cfg, srv.config)
 	assert.Equal(t, logger, srv.logger)
-	assert.True(t, srv.ready.Load(), "server should start in ready state")
+	assert.False(t, srv.ready.Load(), "server should start in not-ready state")
 	assert.NotNil(t, srv.health)
 	assert.NotNil(t, srv.metrics)
+}
+
+func TestNewServer_DefaultNotReady(t *testing.T) {
+	cfg := testConfig()
+	srv, err := NewServer(cfg, testLogger(), nil)
+	require.NoError(t, err)
+
+	// Before SetReady(true), /readyz should return 503.
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.Echo.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code, "/readyz should be 503 before SetReady")
+
+	// After SetReady(true), /readyz should return 200.
+	srv.SetReady(true)
+	req = httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec = httptest.NewRecorder()
+	srv.Echo.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code, "/readyz should be 200 after SetReady")
 }
 
 func TestNewServer_BuiltInRoutes(t *testing.T) {
 	cfg := testConfig()
 	srv, err := NewServer(cfg, testLogger(), nil)
 	require.NoError(t, err)
+
+	// Mark ready so /readyz returns 200 in the route test.
+	srv.SetReady(true)
 
 	tests := []struct {
 		path       string
@@ -156,6 +178,9 @@ func TestServer_AddReadinessCheck(t *testing.T) {
 	cfg := testConfig()
 	srv, err := NewServer(cfg, testLogger(), nil)
 	require.NoError(t, err)
+
+	// Mark ready so the drain flag doesn't mask the check result.
+	srv.SetReady(true)
 
 	called := false
 	srv.AddReadinessCheck("test", func() error {

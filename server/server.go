@@ -35,8 +35,7 @@ type Server struct {
 // The traceExporter is optional — pass nil for noop tracing.
 // Most consumers should use gokux.New() + Init() instead of calling this directly.
 func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.SpanExporter) (*Server, error) {
-	ready := &atomic.Bool{}
-	ready.Store(true)
+	ready := &atomic.Bool{} // defaults to false; App.Run sets it to true after bootstrap
 
 	mp, err := newMetricsProvider()
 	if err != nil {
@@ -159,5 +158,12 @@ func (s *Server) AddLivenessCheck(name string, check HealthCheck) {
 // If any readiness check fails (or the server is draining), /readyz returns 503.
 func (s *Server) AddReadinessCheck(name string, check HealthCheck) {
 	s.health.AddReadinessCheck(name, check)
+}
+
+// SetReady sets the readiness state of the server.
+// Called by App.Run after bootstrap completes to signal that the service
+// is ready to accept traffic, and during shutdown to drain connections.
+func (s *Server) SetReady(ready bool) {
+	s.ready.Store(ready)
 }
 
