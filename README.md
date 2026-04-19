@@ -77,12 +77,12 @@ Register dependency checks that are evaluated on every `/healthz` or `/readyz` r
 
 ```go
 // Readiness check — /readyz returns 503 if database is down
-app.AddReadinessCheck("database", func() error {
-    return db.Ping()
+app.AddReadinessCheck("database", func(ctx context.Context) error {
+    return db.PingContext(ctx)
 })
 
 // Liveness check — /healthz returns 503 if critical subsystem is stuck
-app.AddLivenessCheck("worker", func() error {
+app.AddLivenessCheck("worker", func(ctx context.Context) error {
     if worker.IsStuck() {
         return errors.New("worker goroutine is stuck")
     }

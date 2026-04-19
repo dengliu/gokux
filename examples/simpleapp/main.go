@@ -49,7 +49,7 @@ func main() {
 	// Readiness: check if a dependency (e.g., database) is available.
 	dbReady := &atomic.Bool{}
 	dbReady.Store(true) // simulate a healthy database
-	app.AddReadinessCheck("database", func() error {
+	app.AddReadinessCheck("database", func(_ context.Context) error {
 		if !dbReady.Load() {
 			return errors.New("database connection lost")
 		}
