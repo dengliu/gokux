@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +25,7 @@ type Server struct {
 	config  *config.Config
 	logger  *slog.Logger
 	ready   *atomic.Bool
+	addr    atomic.Pointer[string] // bound listener address; nil until Start binds
 	health  *healthHandler
 	metrics *metricsProvider
 	traces  *traceProvider
@@ -88,12 +90,33 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 	}, nil
 }
 
-// Start begins listening on the configured port. This call blocks.
+// Start begins listening on the configured port. This call blocks until
+// Shutdown is called. Binding happens synchronously before Serve so that
+// a bind failure is returned immediately; once bound, Addr reports the
+// actual listener address (useful when the configured port is 0).
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.config.Server.Port)
-	s.logger.Info("starting server", "addr", addr)
+	bindAddr := fmt.Sprintf(":%d", s.config.Server.Port)
+	s.logger.Info("starting server", "addr", bindAddr)
 
-	return s.Echo.Start(addr)
+	listener, err := net.Listen("tcp", bindAddr)
+	if err != nil {
+		return fmt.Errorf("listen %s: %w", bindAddr, err)
+	}
+	actual := listener.Addr().String()
+	s.addr.Store(&actual)
+	s.Echo.Listener = listener
+
+	return s.Echo.Start(bindAddr)
+}
+
+// Addr returns the listener's bound address (e.g. "127.0.0.1:34567").
+// Returns the empty string if the server has not yet bound. Useful when
+// the configured port is 0 and the OS assigns one.
+func (s *Server) Addr() string {
+	if p := s.addr.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 // Shutdown performs a graceful shutdown: marks the service as not-ready,
