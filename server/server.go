@@ -11,7 +11,6 @@ import (
 
 	"github.com/dengliu/gokux/config"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	slogecho "github.com/samber/slog-echo"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -48,11 +47,15 @@ func NewServer(cfg *config.Config, logger *slog.Logger, traceExporter sdktrace.S
 	e.HideBanner = true
 	e.HidePort = true
 
-	// Middleware
-	e.Use(middleware.Recover())
+	// Middleware — order matters:
+	//   1. otelecho creates a span for every request
+	//   2. Recover catches panics inside the span so we can record the error
+	//   3. slogecho logs the request
+	//   4. metricsMiddleware records duration/count
 	if traceExporter != nil {
 		e.Use(otelecho.Middleware("gokux"))
 	}
+	e.Use(recoverMiddleware(logger))
 	e.Use(slogecho.NewWithConfig(logger, slogecho.Config{
 		DefaultLevel:     slog.LevelInfo,
 		ClientErrorLevel: slog.LevelWarn,
